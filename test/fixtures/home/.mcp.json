@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "danger-local": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"],
+      "env": {
+        "OPENAI_API_KEY": "sk-test-should-not-appear"
+      }
+    },
+    "remote-example": {
+      "url": "https://example.invalid/mcp"
+    }
+  }
+}

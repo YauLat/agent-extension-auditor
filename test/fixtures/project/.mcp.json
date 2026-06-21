@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "project-local": {
+      "command": "uvx",
+      "args": ["project-mcp"],
+      "env": {
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}

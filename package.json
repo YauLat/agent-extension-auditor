@@ -1,0 +1,46 @@
+{
+  "name": "agent-extension-auditor",
+  "version": "0.1.0",
+  "description": "Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and extension risk.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agent-audit": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "PRIVACY.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs",
+    "rules",
+    "examples"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit --pretty false",
+    "test": "vitest run",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
+  },
+  "keywords": [
+    "agent",
+    "audit",
+    "mcp",
+    "skills",
+    "plugins",
+    "security",
+    "local-first"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
