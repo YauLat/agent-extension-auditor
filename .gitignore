@@ -5,3 +5,5 @@ coverage/
 .DS_Store
 /risk-report.md
 /risk-report.json
+/local-dogfood-report.md
+/local-dogfood-report.json

@@ -4,10 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { explainRule } from "./explain/index.js";
 import { renderReport, type ReportFormat } from "./report/index.js";
-import { scanAgentExtensions } from "./scanner/index.js";
+import { filterReportByMinSeverity, scanAgentExtensions } from "./scanner/index.js";
 import { exists } from "./scanner/files.js";
 import { getDefaultTargets } from "./scanner/targets.js";
 import { rules } from "./rules/definitions.js";
+import type { Severity } from "./types.js";
 import { toDisplayPath } from "./util/paths.js";
 import { VERSION } from "./version.js";
 
@@ -48,10 +49,14 @@ async function main(argv: string[]): Promise<void> {
 
 async function runScan(args: string[]): Promise<void> {
   const parsed = parseOptions(args);
-  const report = await scanAgentExtensions({
+  const rawReport = await scanAgentExtensions({
     cwd: parsed.root,
-    home: parsed.home
+    home: parsed.home,
+    includeHome: parsed.includeHome,
+    includePaths: parsed.includePaths,
+    excludePaths: parsed.excludePaths
   });
+  const report = filterReportByMinSeverity(rawReport, parsed.minSeverity);
   const output = renderReport(report, parsed.format);
 
   if (parsed.output) {
@@ -67,7 +72,7 @@ async function runDoctor(args: string[]): Promise<void> {
   const parsed = parseOptions(args);
   const cwd = path.resolve(parsed.root ?? process.cwd());
   const home = path.resolve(parsed.home ?? os.homedir());
-  const targets = getDefaultTargets(cwd, home);
+  const targets = getDefaultTargets(cwd, home, { includeHome: parsed.includeHome });
   const lines = [
     "Agent Audit Doctor",
     "",
@@ -75,6 +80,7 @@ async function runDoctor(args: string[]): Promise<void> {
     `Node: ${process.version}`,
     `CWD: ${cwd}`,
     `Home: ${home}`,
+    `Home scan: ${parsed.includeHome ? "enabled" : "disabled"}`,
     "",
     "Default scan locations:"
   ];
@@ -92,11 +98,18 @@ interface ParsedOptions {
   output?: string;
   root?: string;
   home?: string;
+  includeHome: boolean;
+  minSeverity?: Severity;
+  includePaths: string[];
+  excludePaths: string[];
 }
 
 function parseOptions(args: string[]): ParsedOptions {
   const parsed: ParsedOptions = {
-    format: "terminal"
+    format: "terminal",
+    includeHome: true,
+    includePaths: [],
+    excludePaths: []
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -125,6 +138,18 @@ function parseOptions(args: string[]): ParsedOptions {
         throw new CliError("Missing value for --home");
       }
       parsed.home = value;
+    } else if (arg === "--no-home") {
+      parsed.includeHome = false;
+    } else if (arg === "--min-severity") {
+      const value = args[++index];
+      if (!isMinimumSeverity(value)) {
+        throw new CliError("Unsupported minimum severity. Use medium, high, or critical.");
+      }
+      parsed.minSeverity = value;
+    } else if (arg === "--include") {
+      parsed.includePaths.push(...readPathFilterValues(arg, args[++index]));
+    } else if (arg === "--exclude") {
+      parsed.excludePaths.push(...readPathFilterValues(arg, args[++index]));
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -140,6 +165,20 @@ function isReportFormat(value: string | undefined): value is ReportFormat {
   return value === "terminal" || value === "markdown" || value === "json";
 }
 
+function isMinimumSeverity(value: string | undefined): value is Severity {
+  return value === "medium" || value === "high" || value === "critical";
+}
+
+function readPathFilterValues(optionName: string, value: string | undefined): string[] {
+  if (!value) {
+    throw new CliError(`Missing value for ${optionName}`);
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function printHelp(): void {
   console.log(`agent-audit ${VERSION}
 
@@ -147,16 +186,22 @@ Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and exte
 
 Usage:
   agent-audit scan [--format terminal|markdown|json] [--output report.md]
+  agent-audit scan --no-home --min-severity high
   agent-audit explain <RULE_ID>
   agent-audit doctor
 
 Options:
-  --root <path>   Workspace root to scan. Defaults to the current directory.
-  --home <path>   Home directory to scan. Defaults to the current user's home.
-  --format        Report format for scan. Defaults to terminal.
-  --output, -o    Write the rendered report to a file.
-  --version, -v   Print version.
-  --help, -h      Print help.
+  --root <path>                    Workspace root to scan. Defaults to the current directory.
+  --home <path>                    Home directory to scan. Defaults to the current user's home.
+  --no-home                        Scan only workspace/project locations, not home-directory agent roots.
+  --include <path>[,<path>...]     Only scan matching paths.
+  --exclude <path>[,<path>...]     Skip matching paths.
+  --min-severity medium|high|critical
+                                   Only include findings at or above this severity in reports.
+  --format                         Report format for scan. Defaults to terminal.
+  --output, -o                     Write the rendered report to a file.
+  --version, -v                    Print version.
+  --help, -h                       Print help.
 
 Privacy:
   No telemetry. No cloud upload. No accounts. No secret values printed.

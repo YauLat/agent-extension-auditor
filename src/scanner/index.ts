@@ -11,8 +11,8 @@ import type {
   TargetLocation
 } from "../types.js";
 import { VERSION } from "../version.js";
-import { getRule, sortFindings } from "../rules/definitions.js";
-import { stableId, toDisplayPath } from "../util/paths.js";
+import { getRule, severityRank, sortFindings } from "../rules/definitions.js";
+import { expandHome, stableId, toDisplayPath } from "../util/paths.js";
 import {
   commandName,
   getLineNumber,
@@ -44,13 +44,17 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const generatedAt = options.generatedAt ?? new Date();
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
-  const targets = getDefaultTargets(cwd, home);
+  const pathFilter = buildPathFilter(options, cwd, home);
+  const targets = getDefaultTargets(cwd, home, { includeHome: options.includeHome }).filter((target) =>
+    targetMatchesPathFilter(target.path, pathFilter)
+  );
   const scannedLocations = await buildScannedLocations(targets, home);
   const context: ScanContext = {
     cwd,
     home,
     maxFileBytes,
     maxDepth,
+    pathFilter,
     inventory: [],
     findings: []
   };
@@ -75,6 +79,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
 
   const findings = sortFindings(context.findings);
   const inventory = context.inventory.sort((a, b) => a.displayPath.localeCompare(b.displayPath));
+  const summary = buildSummary(inventory, findings);
 
   return {
     tool: "agent-audit",
@@ -87,7 +92,21 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
     scannedLocations,
     inventory,
     findings,
-    summary: buildSummary(inventory, findings)
+    summary,
+    recommendedActions: buildRecommendedActions(findings, summary)
+  };
+}
+
+export function filterReportByMinSeverity(report: ScanReport, minSeverity?: Severity): ScanReport {
+  const findings = minSeverity
+    ? sortFindings(report.findings).filter((finding) => severityRank[finding.severity] >= severityRank[minSeverity])
+    : sortFindings(report.findings);
+  const summary = buildSummary(report.inventory, findings);
+  return {
+    ...report,
+    findings,
+    summary,
+    recommendedActions: buildRecommendedActions(findings, summary)
   };
 }
 
@@ -96,8 +115,14 @@ interface ScanContext {
   home: string;
   maxFileBytes: number;
   maxDepth: number;
+  pathFilter: ScanPathFilter;
   inventory: InventoryItem[];
   findings: Finding[];
+}
+
+interface ScanPathFilter {
+  includePaths: string[];
+  excludePaths: string[];
 }
 
 async function buildScannedLocations(targets: TargetLocation[], home: string): Promise<ScannedLocation[]> {
@@ -115,7 +140,9 @@ async function buildScannedLocations(targets: TargetLocation[], home: string): P
 }
 
 async function scanSkillRoot(root: string, context: ScanContext): Promise<void> {
-  const skillFiles = await findFiles(root, (filePath) => path.basename(filePath) === "SKILL.md", context.maxDepth);
+  const skillFiles = (await findFiles(root, (filePath) => path.basename(filePath) === "SKILL.md", context.maxDepth)).filter(
+    (filePath) => pathMatchesPathFilter(filePath, context.pathFilter)
+  );
   for (const skillFile of skillFiles) {
     const content = await readSmallFile(skillFile, context.maxFileBytes);
     if (content === undefined) {
@@ -154,13 +181,18 @@ async function scanSkillRoot(root: string, context: ScanContext): Promise<void> 
 }
 
 async function scanPluginRoot(root: string, context: ScanContext): Promise<void> {
-  const packageFiles = await findFiles(root, (filePath) => path.basename(filePath) === "package.json", context.maxDepth);
+  const packageFiles = (
+    await findFiles(root, (filePath) => path.basename(filePath) === "package.json", context.maxDepth)
+  ).filter((filePath) => pathMatchesPathFilter(filePath, context.pathFilter));
   for (const packageFile of packageFiles) {
     await scanPackageJson(packageFile, context);
   }
 }
 
 async function scanPackageJson(packageFile: string, context: ScanContext): Promise<void> {
+  if (!pathMatchesPathFilter(packageFile, context.pathFilter)) {
+    return;
+  }
   const content = await readSmallFile(packageFile, context.maxFileBytes);
   if (content === undefined) {
     return;
@@ -228,6 +260,9 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
 }
 
 async function scanJsonConfig(filePath: string, context: ScanContext): Promise<void> {
+  if (!pathMatchesPathFilter(filePath, context.pathFilter)) {
+    return;
+  }
   const content = await readSmallFile(filePath, context.maxFileBytes);
   if (content === undefined) {
     return;
@@ -263,6 +298,9 @@ async function scanJsonConfig(filePath: string, context: ScanContext): Promise<v
 }
 
 async function scanTextFile(filePath: string, context: ScanContext): Promise<void> {
+  if (!pathMatchesPathFilter(filePath, context.pathFilter)) {
+    return;
+  }
   if (!looksLikeTextFile(filePath)) {
     return;
   }
@@ -526,6 +564,81 @@ function buildSummary(inventory: InventoryItem[], findings: Finding[]) {
     },
     findings: findingCounts
   };
+}
+
+function buildRecommendedActions(findings: Finding[], summary: ReturnType<typeof buildSummary>): string[] {
+  if (findings.length === 0) {
+    return [
+      "No findings matched the current scan filters.",
+      "Re-run without filters if you expected installed extensions to appear."
+    ];
+  }
+
+  const actions: string[] = [];
+  if (summary.findings.critical > 0) {
+    actions.push("Review critical findings first, especially remote script execution patterns, before trusting the extension.");
+  }
+  if (summary.findings.high > 0) {
+    actions.push("Review high findings for install scripts, hooks, local commands, and write/delete capability.");
+  }
+  if (hasRule(findings, "MCP_ENV_REFERENCE") || hasRule(findings, "SECRET_PATTERN_REFERENCE")) {
+    actions.push("Check credential scope for MCP servers and secret-like references; secret values are intentionally not printed.");
+  }
+  if (hasRule(findings, "DUPLICATE_SKILL_NAME")) {
+    actions.push("Resolve duplicate skill names by choosing a canonical copy or documenting why both should exist.");
+  }
+  if (actions.length === 0) {
+    actions.push("Review medium and low findings for provenance, broad reads, and maintainability concerns.");
+  }
+  actions.push("Keep this report local because it may include extension names and filesystem paths.");
+  return actions;
+}
+
+function hasRule(findings: Finding[], ruleId: string): boolean {
+  return findings.some((finding) => finding.ruleId === ruleId);
+}
+
+function buildPathFilter(options: ScanOptions, cwd: string, home: string): ScanPathFilter {
+  return {
+    includePaths: normalizeFilterPaths(options.includePaths ?? [], cwd, home),
+    excludePaths: normalizeFilterPaths(options.excludePaths ?? [], cwd, home)
+  };
+}
+
+function normalizeFilterPaths(values: string[], cwd: string, home: string): string[] {
+  return values.map((value) => {
+    const expanded = expandHome(value, home);
+    return path.resolve(path.isAbsolute(expanded) ? expanded : path.join(cwd, expanded));
+  });
+}
+
+function targetMatchesPathFilter(targetPath: string, filter: ScanPathFilter): boolean {
+  const normalizedTarget = path.resolve(targetPath);
+  if (filter.excludePaths.some((excludedPath) => isSameOrInside(normalizedTarget, excludedPath))) {
+    return false;
+  }
+  if (filter.includePaths.length === 0) {
+    return true;
+  }
+  return filter.includePaths.some(
+    (includedPath) => isSameOrInside(normalizedTarget, includedPath) || isSameOrInside(includedPath, normalizedTarget)
+  );
+}
+
+function pathMatchesPathFilter(filePath: string, filter: ScanPathFilter): boolean {
+  const normalizedPath = path.resolve(filePath);
+  if (filter.excludePaths.some((excludedPath) => isSameOrInside(normalizedPath, excludedPath))) {
+    return false;
+  }
+  if (filter.includePaths.length === 0) {
+    return true;
+  }
+  return filter.includePaths.some((includedPath) => isSameOrInside(normalizedPath, includedPath));
+}
+
+function isSameOrInside(candidatePath: string, parentPath: string): boolean {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
 function inferSource(content: string): string | undefined {

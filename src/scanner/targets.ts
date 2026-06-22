@@ -1,9 +1,14 @@
 import path from "node:path";
 import type { TargetLocation } from "../types.js";
 
-export function getDefaultTargets(cwd: string, home: string): TargetLocation[] {
+interface DefaultTargetOptions {
+  includeHome?: boolean;
+}
+
+export function getDefaultTargets(cwd: string, home: string, options: DefaultTargetOptions = {}): TargetLocation[] {
+  const includeHome = options.includeHome ?? true;
   const workspaceFiles = ["AGENTS.md", "CLAUDE.md", "SOUL.md", "USER.md", "MEMORY.md", ".mcp.json"];
-  const targets: TargetLocation[] = [
+  const homeTargets: TargetLocation[] = [
     {
       path: path.join(home, ".claude", "skills"),
       kind: "skill-root",
@@ -33,7 +38,10 @@ export function getDefaultTargets(cwd: string, home: string): TargetLocation[] {
       path: path.join(home, ".mcp.json"),
       kind: "mcp-config",
       reason: "User MCP config"
-    },
+    }
+  ];
+  const targets: TargetLocation[] = [
+    ...(includeHome ? homeTargets : []),
     {
       path: path.join(cwd, ".agents", "skills"),
       kind: "skill-root",

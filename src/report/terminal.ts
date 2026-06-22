@@ -34,6 +34,15 @@ export function renderTerminal(report: ScanReport): string {
     }
   }
 
+  lines.push("", "Recommended next actions:");
+  if (report.recommendedActions.length === 0) {
+    lines.push("  None");
+  } else {
+    for (const action of report.recommendedActions) {
+      lines.push(`  - ${action}`);
+    }
+  }
+
   lines.push("", "Privacy: telemetry disabled, no data uploaded.");
   return `${lines.join("\n")}\n`;
 }

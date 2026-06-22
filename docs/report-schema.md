@@ -5,7 +5,7 @@
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "generatedAt": "ISO-8601",
   "privacy": {
     "telemetry": false,
@@ -14,13 +14,19 @@
   "scannedLocations": [],
   "inventory": [],
   "findings": [],
-  "summary": {}
+  "summary": {},
+  "recommendedActions": []
 }
 ```
 
 ## Privacy Contract
 
 JSON reports must not include secret values. Findings should reference locations, rule IDs, and review guidance rather than copying sensitive strings.
+
+## Filters
+
+`--min-severity` filters findings before rendering and recomputes `summary.findings` and `recommendedActions`.
+`--no-home`, `--include`, and `--exclude` change which default scan-location paths are scanned, so `scannedLocations`, `inventory`, and `findings` should be interpreted relative to those filters.
 
 ## Stability
 

@@ -77,6 +77,7 @@ export interface ScanReport {
   inventory: InventoryItem[];
   findings: Finding[];
   summary: ScanSummary;
+  recommendedActions: string[];
 }
 
 export interface ScanOptions {
@@ -85,6 +86,9 @@ export interface ScanOptions {
   generatedAt?: Date;
   maxFileBytes?: number;
   maxDepth?: number;
+  includeHome?: boolean;
+  includePaths?: string[];
+  excludePaths?: string[];
 }
 
 export interface TargetLocation {

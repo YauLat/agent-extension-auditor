@@ -1,6 +1,6 @@
 {
   "name": "agent-extension-auditor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and extension risk.",
   "license": "MIT",
   "type": "module",
@@ -41,6 +41,6 @@
   "devDependencies": {
     "@types/node": "^24.0.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.9"
   }
 }

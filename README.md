@@ -24,9 +24,19 @@ node dist/cli.js scan
 agent-audit scan
 agent-audit scan --format markdown --output risk-report.md
 agent-audit scan --format json --output risk-report.json
+agent-audit scan --min-severity high
+agent-audit scan --no-home
+agent-audit scan --include .mcp.json --exclude ~/.codex/plugins/cache
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
 ```
+
+Useful scan filters:
+
+- `--min-severity medium|high|critical` keeps the report focused on findings at or above the selected severity.
+- `--no-home` scans only project/workspace locations and skips home-directory agent roots such as `~/.claude` and `~/.codex`.
+- `--include <path>[,<path>...]` limits scanning to matching paths within the default scan locations.
+- `--exclude <path>[,<path>...]` skips matching paths within the default scan locations.
 
 ## What It Scans
 
@@ -67,11 +77,12 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "privacy": {
     "telemetry": false,
     "uploaded": false
-  }
+  },
+  "recommendedActions": []
 }
 ```
 

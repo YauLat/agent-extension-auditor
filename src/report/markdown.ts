@@ -43,6 +43,21 @@ export function renderMarkdown(report: ScanReport): string {
     `| Low | ${report.summary.findings.low} |`,
     `| Info | ${report.summary.findings.info} |`,
     "",
+    "## Recommended Next Actions",
+    ""
+  );
+
+  if (report.recommendedActions.length === 0) {
+    lines.push("No immediate next actions.", "");
+  } else {
+    for (const action of report.recommendedActions) {
+      lines.push(`- ${action}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(
+    "",
     "## Findings by Severity",
     ""
   );
