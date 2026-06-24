@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "agent-audit": "./dist/cli.js"
+    "agent-audit": "dist/cli.js"
   },
   "files": [
     "dist",
