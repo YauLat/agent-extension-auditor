@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rewrote the README introduction and added mainstream-language entry points for new users.
 - Added `agent-audit ui` for a local terminal UI grouped by extension type and severity.
 - Added `agent-audit scan --format html --output risk-report.html` for a static local dashboard report.
 - Added categorized inventory/finding cards to make large skills scans easier to review.

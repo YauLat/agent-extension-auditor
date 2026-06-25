@@ -1,7 +1,7 @@
 {
   "name": "agent-extension-auditor",
   "version": "0.1.1",
-  "description": "Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and extension risk.",
+  "description": "Local-first CLI and terminal UI for reviewing AI agent extension risk before you trust local skills, plugins, MCP servers, hooks, and configs.",
   "license": "MIT",
   "type": "module",
   "bin": {

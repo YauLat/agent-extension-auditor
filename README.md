@@ -1,8 +1,34 @@
 # Agent Extension Auditor
 
-Local-only. No telemetry. No account. No cloud upload. Open source. Does not read or print secret values.
+Know what your local AI agents can run before you trust them.
 
-`agent-audit` is a read-only CLI for auditing local agent extensions: skills, plugins, MCP servers, hooks, and related configuration. It produces deterministic risk flags so users can review what is installed before trusting it.
+`agent-audit` is a local-first risk reviewer for agent extensions: skills, plugins, MCP servers, hooks, config files, and npm-style packages. It turns a messy local agent setup into a categorized review queue, without uploading your files or printing secret values.
+
+**Language:** [English](./docs/languages.md#english) · [繁體中文](./docs/languages.md#traditional-chinese) · [简体中文](./docs/languages.md#simplified-chinese) · [日本語](./docs/languages.md#japanese) · [한국어](./docs/languages.md#korean) · [Español](./docs/languages.md#spanish) · [Français](./docs/languages.md#french) · [Deutsch](./docs/languages.md#german) · [Português](./docs/languages.md#portuguese)
+
+## Why Use It
+
+Modern agent tools can load local skills, run MCP servers, install plugins, execute hooks, and read configuration from several hidden folders. That power is useful, but it is hard to review by hand.
+
+Agent Extension Auditor helps you answer practical questions:
+
+- Which local extensions can execute commands?
+- Which MCP servers receive environment variables?
+- Which packages define install scripts or executables?
+- Which hooks or docs mention write/delete behavior?
+- Which skills have unknown sources, duplicate names, or oversized context?
+- Where should I start reviewing first?
+
+It is not an antivirus engine and does not claim an extension is safe or malicious. It gives you a structured, local review surface.
+
+## What You Get
+
+- `agent-audit scan` for terminal, Markdown, JSON, and static HTML reports.
+- `agent-audit ui` for a no-browser terminal UI grouped by extension type and severity.
+- Categorized HTML reports for large skill libraries.
+- Severity filtering with `critical`, `high`, `medium`, `low`, and `info`.
+- Read-only scanning: no install, sync, delete, or auto-fix behavior.
+- Privacy-first defaults: no telemetry, no cloud upload, no account, no secret value printing.
 
 ## Install
 
@@ -18,14 +44,27 @@ npm run build
 node dist/cli.js scan
 ```
 
-## Usage
+## Quick Start
 
 ```bash
 agent-audit scan
+agent-audit ui
 agent-audit scan --format html --output risk-report.html
+agent-audit scan --min-severity high
+agent-audit scan --no-home
+```
+
+Open the HTML report directly from disk. It does not need a server, account, or upload.
+
+## Commands
+
+```bash
+agent-audit scan
+agent-audit scan --format terminal
 agent-audit scan --format markdown --output risk-report.md
 agent-audit scan --format json --output risk-report.json
-agent-audit scan --min-severity high
+agent-audit scan --format html --output risk-report.html
+agent-audit scan --min-severity medium|high|critical
 agent-audit scan --no-home
 agent-audit scan --include .mcp.json --exclude ~/.codex/plugins/cache
 agent-audit ui
@@ -35,15 +74,17 @@ agent-audit doctor
 
 Useful scan filters:
 
-- `--min-severity medium|high|critical` keeps the report focused on findings at or above the selected severity.
+- `--min-severity medium|high|critical` keeps reports focused on higher-priority findings.
 - `--no-home` scans only project/workspace locations and skips home-directory agent roots such as `~/.claude` and `~/.codex`.
 - `--include <path>[,<path>...]` limits scanning to matching paths within the default scan locations.
 - `--exclude <path>[,<path>...]` skips matching paths within the default scan locations.
 
+## Review Interfaces
+
 Terminal UI:
 
 - `agent-audit ui` opens a local read-only terminal interface.
-- The TUI groups findings by extension type and severity so large skill libraries can be reviewed without a browser.
+- Findings are grouped by extension type and severity.
 - Keyboard shortcuts: left/right changes category, `1`-`5` selects severity, `0` or `a` shows all severities, up/down moves selection, `q` quits.
 
 Report formats:
@@ -51,7 +92,7 @@ Report formats:
 - `terminal` prints a compact local summary.
 - `markdown` writes a readable local review packet.
 - `json` writes structured data for local automation.
-- `html` writes a static local dashboard that opens directly in a browser without a server, upload, or account. The dashboard includes categorized inventory/finding cards, an advanced findings table, and an English / Traditional Chinese UI toggle.
+- `html` writes a static local dashboard. It includes categorized inventory cards, severity groups, an advanced findings table, and language options.
 
 ## What It Scans
 
@@ -83,7 +124,7 @@ The scanner is local-first and read-only. It does not upload, phone home, create
 
 ## Security Model
 
-This tool does not declare an extension safe or malicious. It highlights review-worthy behavior and explains why each rule matters. See [docs/risk-model.md](./docs/risk-model.md).
+This tool highlights review-worthy behavior and explains why each rule matters. It does not declare an extension safe or malicious. See [docs/risk-model.md](./docs/risk-model.md).
 
 ## Report Schema
 
