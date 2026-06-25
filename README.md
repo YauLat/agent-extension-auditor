@@ -28,6 +28,7 @@ agent-audit scan --format json --output risk-report.json
 agent-audit scan --min-severity high
 agent-audit scan --no-home
 agent-audit scan --include .mcp.json --exclude ~/.codex/plugins/cache
+agent-audit ui
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
 ```
@@ -38,6 +39,12 @@ Useful scan filters:
 - `--no-home` scans only project/workspace locations and skips home-directory agent roots such as `~/.claude` and `~/.codex`.
 - `--include <path>[,<path>...]` limits scanning to matching paths within the default scan locations.
 - `--exclude <path>[,<path>...]` skips matching paths within the default scan locations.
+
+Terminal UI:
+
+- `agent-audit ui` opens a local read-only terminal interface.
+- The TUI groups findings by extension type and severity so large skill libraries can be reviewed without a browser.
+- Keyboard shortcuts: left/right changes category, `1`-`5` selects severity, `0` or `a` shows all severities, up/down moves selection, `q` quits.
 
 Report formats:
 

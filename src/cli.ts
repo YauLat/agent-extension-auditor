@@ -9,6 +9,7 @@ import { exists } from "./scanner/files.js";
 import { getDefaultTargets } from "./scanner/targets.js";
 import { rules } from "./rules/definitions.js";
 import type { Severity } from "./types.js";
+import { runTerminalUi } from "./ui/terminal.js";
 import { toDisplayPath } from "./util/paths.js";
 import { VERSION } from "./version.js";
 
@@ -27,6 +28,11 @@ async function main(argv: string[]): Promise<void> {
 
   if (command === "scan") {
     await runScan(rest);
+    return;
+  }
+
+  if (command === "ui") {
+    await runUi(rest);
     return;
   }
 
@@ -68,6 +74,26 @@ async function runScan(args: string[]): Promise<void> {
   process.stdout.write(output);
 }
 
+async function runUi(args: string[]): Promise<void> {
+  const parsed = parseOptions(args);
+  if (parsed.output) {
+    throw new CliError("agent-audit ui does not support --output. Use scan --format html/json/markdown for files.");
+  }
+  if (parsed.formatProvided) {
+    throw new CliError("agent-audit ui does not support --format. Use scan for report formats.");
+  }
+
+  const rawReport = await scanAgentExtensions({
+    cwd: parsed.root,
+    home: parsed.home,
+    includeHome: parsed.includeHome,
+    includePaths: parsed.includePaths,
+    excludePaths: parsed.excludePaths
+  });
+  const report = filterReportByMinSeverity(rawReport, parsed.minSeverity);
+  await runTerminalUi(report);
+}
+
 async function runDoctor(args: string[]): Promise<void> {
   const parsed = parseOptions(args);
   const cwd = path.resolve(parsed.root ?? process.cwd());
@@ -95,6 +121,7 @@ async function runDoctor(args: string[]): Promise<void> {
 
 interface ParsedOptions {
   format: ReportFormat;
+  formatProvided: boolean;
   output?: string;
   root?: string;
   home?: string;
@@ -107,6 +134,7 @@ interface ParsedOptions {
 function parseOptions(args: string[]): ParsedOptions {
   const parsed: ParsedOptions = {
     format: "terminal",
+    formatProvided: false,
     includeHome: true,
     includePaths: [],
     excludePaths: []
@@ -120,6 +148,7 @@ function parseOptions(args: string[]): ParsedOptions {
         throw new CliError(`Unsupported format: ${value ?? ""}`);
       }
       parsed.format = value;
+      parsed.formatProvided = true;
     } else if (arg === "--output" || arg === "-o") {
       const value = args[++index];
       if (!value) {
@@ -186,6 +215,7 @@ Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and exte
 
 Usage:
   agent-audit scan [--format terminal|markdown|json|html] [--output report.md]
+  agent-audit ui [--no-home] [--min-severity high]
   agent-audit scan --no-home --min-severity high
   agent-audit explain <RULE_ID>
   agent-audit doctor

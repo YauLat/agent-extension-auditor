@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `agent-audit ui` for a local terminal UI grouped by extension type and severity.
 - Added `agent-audit scan --format html --output risk-report.html` for a static local dashboard report.
 - Added categorized inventory/finding cards to make large skills scans easier to review.
 - Grouped category-card findings by severity so large categories can be reviewed by risk level.
