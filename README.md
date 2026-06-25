@@ -22,6 +22,7 @@ node dist/cli.js scan
 
 ```bash
 agent-audit scan
+agent-audit scan --format html --output risk-report.html
 agent-audit scan --format markdown --output risk-report.md
 agent-audit scan --format json --output risk-report.json
 agent-audit scan --min-severity high
@@ -37,6 +38,13 @@ Useful scan filters:
 - `--no-home` scans only project/workspace locations and skips home-directory agent roots such as `~/.claude` and `~/.codex`.
 - `--include <path>[,<path>...]` limits scanning to matching paths within the default scan locations.
 - `--exclude <path>[,<path>...]` skips matching paths within the default scan locations.
+
+Report formats:
+
+- `terminal` prints a compact local summary.
+- `markdown` writes a readable local review packet.
+- `json` writes structured data for local automation.
+- `html` writes a static local dashboard that opens directly in a browser without a server, upload, or account.
 
 ## What It Scans
 

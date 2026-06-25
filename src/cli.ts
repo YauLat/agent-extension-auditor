@@ -162,7 +162,7 @@ function parseOptions(args: string[]): ParsedOptions {
 }
 
 function isReportFormat(value: string | undefined): value is ReportFormat {
-  return value === "terminal" || value === "markdown" || value === "json";
+  return value === "terminal" || value === "markdown" || value === "json" || value === "html";
 }
 
 function isMinimumSeverity(value: string | undefined): value is Severity {
@@ -185,7 +185,7 @@ function printHelp(): void {
 Local-first CLI for auditing agent skills, plugins, MCP servers, hooks, and extension risk.
 
 Usage:
-  agent-audit scan [--format terminal|markdown|json] [--output report.md]
+  agent-audit scan [--format terminal|markdown|json|html] [--output report.md]
   agent-audit scan --no-home --min-severity high
   agent-audit explain <RULE_ID>
   agent-audit doctor

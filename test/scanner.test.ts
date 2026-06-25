@@ -1,6 +1,8 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { explainRule } from "../src/explain/index.js";
+import { renderHtml } from "../src/report/html.js";
+import { renderReport } from "../src/report/index.js";
 import { renderJson } from "../src/report/json.js";
 import { renderMarkdown } from "../src/report/markdown.js";
 import { filterReportByMinSeverity, scanAgentExtensions } from "../src/scanner/index.js";
@@ -39,13 +41,15 @@ describe("agent extension scanner", () => {
     expect(ruleIds).toContain("DUPLICATE_SKILL_NAME");
   });
 
-  it("does not print secret values in JSON or Markdown reports", async () => {
+  it("does not print secret values in JSON, Markdown, or HTML reports", async () => {
     const report = await scanAgentExtensions({ cwd, home });
     const json = renderJson(report);
     const markdown = renderMarkdown(report);
+    const html = renderHtml(report);
 
     expect(json).not.toContain("sk-test-should-not-appear");
     expect(markdown).not.toContain("sk-test-should-not-appear");
+    expect(html).not.toContain("sk-test-should-not-appear");
     expect(json).toContain("SECRET_PATTERN_REFERENCE");
   });
 
@@ -106,6 +110,80 @@ describe("agent extension scanner", () => {
     expect(Array.isArray(parsed.recommendedActions)).toBe(true);
     expect(Array.isArray(parsed.inventory)).toBe(true);
     expect(Array.isArray(parsed.findings)).toBe(true);
+  });
+
+  it("renders an HTML dashboard with filters, search, and required sections", async () => {
+    const report = await scanAgentExtensions({ cwd, home, generatedAt: new Date("2026-06-21T00:00:00.000Z") });
+    const html = renderHtml(report);
+
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("Overview risk summary");
+    expect(html).toContain("Discovered extension surface");
+    expect(html).toContain("Recommended");
+    expect(html).toContain("Review queue");
+    expect(html).toContain("Scanned locations");
+    expect(html).toContain("No telemetry. No upload. Local-only.");
+    expect(html).toContain("data-testid=\"severity-filter\"");
+    expect(html).toContain("data-testid=\"rule-filter\"");
+    expect(html).toContain("data-testid=\"inventory-filter\"");
+    expect(html).toContain("data-testid=\"location-filter\"");
+    expect(html).toContain("data-testid=\"search-filter\"");
+    expect(html).toContain("data-finding-row");
+    expect(html).toContain("function applyFilters");
+  });
+
+  it("routes HTML through the shared report renderer", async () => {
+    const report = await scanAgentExtensions({ cwd, home });
+    const html = renderReport(report, "html");
+
+    expect(html).toContain("<title>Agent Extension Audit</title>");
+    expect(html).toContain("data-finding-row");
+  });
+
+  it("renders a clear HTML empty state when there are no findings", async () => {
+    const report = await scanAgentExtensions({ cwd, home });
+    const emptyReport = {
+      ...report,
+      findings: [],
+      recommendedActions: [],
+      summary: {
+        ...report.summary,
+        findings: {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0
+        }
+      }
+    };
+    const html = renderHtml(emptyReport);
+
+    expect(html).toContain("No findings detected");
+    expect(html).toContain("The scan did not find review-worthy extension behavior");
+  });
+
+  it("escapes HTML-sensitive report fields in the HTML renderer", async () => {
+    const report = await scanAgentExtensions({ cwd, home });
+    const taintedReport = {
+      ...report,
+      findings: [
+        {
+          ...report.findings[0],
+          message: "</script><img src=x onerror=alert(1)>",
+          location: {
+            ...report.findings[0].location,
+            displayPath: "<bad-path>"
+          }
+        }
+      ]
+    };
+    const html = renderHtml(taintedReport);
+
+    expect(html).not.toContain("</script><img");
+    expect(html).not.toContain("<bad-path>");
+    expect(html).toContain("&lt;bad-path&gt;");
+    expect(html).toContain("&lt;/script&gt;&lt;img");
   });
 
   it("explains documented rules", () => {
