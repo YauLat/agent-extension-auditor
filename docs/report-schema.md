@@ -30,6 +30,8 @@ JSON and HTML reports must not include secret values. Findings should reference 
 
 HTML reports also include local browser filters for severity, rule ID, inventory type, location keyword, and free-text search across rule, message, and path fields. These filters run entirely in the browser and do not upload data.
 
+The HTML UI includes an English / Traditional Chinese toggle for report chrome such as headings, filters, table labels, severity labels, inventory labels, empty states, and privacy text. The toggle is browser-only and does not change the JSON report schema.
+
 ## Stability
 
 The report shape is pre-1.0 and may change, but `privacy.telemetry` and `privacy.uploaded` should remain explicit booleans.

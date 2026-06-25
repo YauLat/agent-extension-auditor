@@ -123,6 +123,8 @@ describe("agent extension scanner", () => {
     expect(html).toContain("Review queue");
     expect(html).toContain("Scanned locations");
     expect(html).toContain("No telemetry. No upload. Local-only.");
+    expect(html).toContain("data-lang-option=\"en\"");
+    expect(html).toContain("data-lang-option=\"zh-Hant\"");
     expect(html).toContain("data-testid=\"severity-filter\"");
     expect(html).toContain("data-testid=\"rule-filter\"");
     expect(html).toContain("data-testid=\"inventory-filter\"");
@@ -130,6 +132,20 @@ describe("agent extension scanner", () => {
     expect(html).toContain("data-testid=\"search-filter\"");
     expect(html).toContain("data-finding-row");
     expect(html).toContain("function applyFilters");
+  });
+
+  it("renders local English and Traditional Chinese language switching controls", async () => {
+    const report = await scanAgentExtensions({ cwd, home, generatedAt: new Date("2026-06-21T00:00:00.000Z") });
+    const html = renderHtml(report);
+
+    expect(html).toContain("agent-audit-report-language");
+    expect(html).toContain("function applyLanguage");
+    expect(html).toContain("繁中");
+    expect(html).toContain("風險總覽");
+    expect(html).toContain("清單與下一步");
+    expect(html).toContain("共 {total} 項，顯示 {visible} 項");
+    expect(html).toContain("data-i18n-placeholder=\"searchPlaceholder\"");
+    expect(html).toContain("data-label-key=\"recommendation\"");
   });
 
   it("routes HTML through the shared report renderer", async () => {

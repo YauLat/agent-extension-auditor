@@ -4,6 +4,7 @@
 
 - Added `agent-audit scan --format html --output risk-report.html` for a static local dashboard report.
 - Added browser-only severity, rule, inventory type, location, and text filters to HTML reports.
+- Added an English / Traditional Chinese UI toggle to HTML reports.
 - Documented the HTML report privacy model and local-only usage.
 
 ## 0.1.1
