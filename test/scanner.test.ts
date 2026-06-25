@@ -134,6 +134,9 @@ describe("agent extension scanner", () => {
     expect(html).toContain("data-testid=\"search-filter\"");
     expect(html).toContain("data-category-section=\"skill\"");
     expect(html).toContain("data-category-filter=\"skill\"");
+    expect(html).toContain("Severity groups");
+    expect(html).toContain("data-severity-filter=\"critical\"");
+    expect(html).toContain("severity-group-critical");
     expect(html).toContain("data-advanced-review");
     expect(html).toContain("data-finding-row");
     expect(html).toContain("function applyFilters");
@@ -149,6 +152,8 @@ describe("agent extension scanner", () => {
     expect(html).toContain("風險總覽");
     expect(html).toContain("分類版面");
     expect(html).toContain("審閱此分類");
+    expect(html).toContain("按程度分類");
+    expect(html).toContain("審閱{severity}");
     expect(html).toContain("清單與下一步");
     expect(html).toContain("共 {total} 項，顯示 {visible} 項");
     expect(html).toContain("data-i18n-placeholder=\"searchPlaceholder\"");

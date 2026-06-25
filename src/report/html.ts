@@ -74,6 +74,7 @@ const htmlCopy = {
     recommended: "Recommended",
     reset: "Reset",
     reviewCategory: "Review this category",
+    reviewSeverity: "Review {severity}",
     reviewQueue: "Review queue",
     rule: "Rule",
     scannedLocations: "Scanned locations",
@@ -85,6 +86,8 @@ const htmlCopy = {
     sourceBreakdown: "Source breakdown",
     title: "Title",
     topFindings: "Top findings",
+    severityGroups: "Severity groups",
+    moreInSeverity: "+{count} more",
     nextActions: "Next actions"
   },
   "zh-Hant": {
@@ -140,6 +143,7 @@ const htmlCopy = {
     recommended: "建議",
     reset: "重設",
     reviewCategory: "審閱此分類",
+    reviewSeverity: "審閱{severity}",
     reviewQueue: "審閱佇列",
     rule: "規則",
     scannedLocations: "掃描位置",
@@ -151,6 +155,8 @@ const htmlCopy = {
     sourceBreakdown: "來源分佈",
     title: "標題",
     topFindings: "重點發現",
+    severityGroups: "按程度分類",
+    moreInSeverity: "還有 {count} 項",
     nextActions: "下一步"
   }
 } satisfies Record<Language, Record<string, string>>;
@@ -320,7 +326,6 @@ function renderCategoryBrowser(
 
 function renderCategoryCard(category: CategorySummary): string {
   const copy = htmlCopy[defaultLanguage];
-  const topFindings = sortFindings(category.findings).slice(0, 5);
 
   return `<article class="category-card" data-category-section="${category.type}">
     <header>
@@ -342,8 +347,8 @@ function renderCategoryCard(category: CategorySummary): string {
     </div>
     ${renderSourceBreakdown(category)}
     <div class="category-findings">
-      <h3 data-i18n="topFindings">${copy.topFindings}</h3>
-      ${topFindings.length > 0 ? renderMiniFindings(topFindings) : `<div class="empty-inline" data-i18n="noCategoryFindings">${copy.noCategoryFindings}</div>`}
+      <h3 data-i18n="severityGroups">${copy.severityGroups}</h3>
+      ${category.findings.length > 0 ? renderSeverityGroups(category) : `<div class="empty-inline" data-i18n="noCategoryFindings">${copy.noCategoryFindings}</div>`}
     </div>
   </article>`;
 }
@@ -373,14 +378,42 @@ function renderSourceBreakdown(category: CategorySummary): string {
   </div>`;
 }
 
-function renderMiniFindings(findings: Finding[]): string {
+function renderSeverityGroups(category: CategorySummary): string {
+  const groups = severities
+    .map((severity) => ({
+      severity,
+      findings: sortFindings(category.findings.filter((finding) => finding.severity === severity))
+    }))
+    .filter((group) => group.findings.length > 0);
+
+  return `<div class="severity-groups">
+    ${groups.map((group) => renderSeverityGroup(category.type, group.severity, group.findings)).join("\n")}
+  </div>`;
+}
+
+function renderSeverityGroup(type: InventoryType, severity: Severity, findings: Finding[]): string {
   const copy = htmlCopy[defaultLanguage];
-  return `<ol class="mini-finding-list">
-    ${findings
+  const preview = findings.slice(0, 3);
+  const remaining = findings.length - preview.length;
+
+  return `<section class="severity-group severity-group-${severity}">
+    <header>
+      <div>
+        <span class="badge badge-${severity}" data-i18n-severity="${severity}">${copy[severity]}</span>
+        <strong>${findings.length}</strong>
+      </div>
+      <button type="button"
+        class="severity-focus"
+        data-category-filter="${type}"
+        data-severity-filter="${severity}"
+        data-i18n-template="reviewSeverity"
+        data-severity-key="${severity}">${formatTemplate(copy.reviewSeverity, { severity: copy[severity] })}</button>
+    </header>
+    <ol class="mini-finding-list">
+      ${preview
       .map((finding) => {
         const location = formatLocation(finding);
         return `<li>
-          <span class="badge badge-${finding.severity}" data-i18n-severity="${finding.severity}">${copy[finding.severity]}</span>
           <div>
             <strong><code>${escapeHtml(finding.ruleId)}</code> ${escapeHtml(finding.title)}</strong>
             <p>${escapeHtml(finding.message)}</p>
@@ -389,7 +422,15 @@ function renderMiniFindings(findings: Finding[]): string {
         </li>`;
       })
       .join("\n")}
-  </ol>`;
+    </ol>
+    ${
+      remaining > 0
+        ? `<p class="more-in-severity" data-i18n-template="moreInSeverity" data-count="${remaining}">${formatTemplate(copy.moreInSeverity, {
+            count: remaining
+          })}</p>`
+        : ""
+    }
+  </section>`;
 }
 
 function buildCategorySummaries(
@@ -1001,9 +1042,67 @@ h3 {
   padding-top: 10px;
 }
 
+.severity-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.severity-group {
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: #fbf7ed;
+  padding: 10px;
+}
+
+.severity-group-critical {
+  --accent: var(--critical);
+}
+
+.severity-group-high {
+  --accent: var(--high);
+}
+
+.severity-group-medium {
+  --accent: var(--medium);
+}
+
+.severity-group-low {
+  --accent: var(--low);
+}
+
+.severity-group-info {
+  --accent: var(--info);
+}
+
+.severity-group header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.severity-group header div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.severity-group header strong {
+  font-size: 1.2rem;
+}
+
+.severity-focus {
+  background: #fffefa;
+  color: var(--ink);
+  font-size: 0.78rem;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
 .mini-finding-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1011,15 +1110,19 @@ h3 {
 
 .mini-finding-list li {
   align-items: start;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 80px minmax(0, 1fr);
+  display: block;
 }
 
 .mini-finding-list p {
   color: var(--muted);
   font-size: 0.82rem;
   margin: 2px 0;
+}
+
+.more-in-severity {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 8px;
 }
 
 .advanced-review summary {
@@ -1266,8 +1369,9 @@ tr[hidden],
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .mini-finding-list li {
-    grid-template-columns: 1fr;
+  .severity-group header {
+    align-items: start;
+    flex-direction: column;
   }
 
   table,
@@ -1408,6 +1512,19 @@ function renderScript(): string {
       }
     }
 
+    for (const element of document.querySelectorAll("[data-i18n-template]")) {
+      const key = element.getAttribute("data-i18n-template");
+      if (!key || !languageCopy[key]) {
+        continue;
+      }
+      const severityKey = element.getAttribute("data-severity-key");
+      const values = {
+        count: element.getAttribute("data-count") || "0",
+        severity: severityKey && languageCopy[severityKey] ? languageCopy[severityKey] : ""
+      };
+      element.textContent = formatTemplate(languageCopy[key], values);
+    }
+
     if (locationCount) {
       locationCount.textContent = formatTemplate(languageCopy.locationsCount, {
         count: locationCount.getAttribute("data-count") || "0"
@@ -1483,6 +1600,9 @@ function renderScript(): string {
     button.addEventListener("click", function () {
       if (inventoryFilter && "value" in inventoryFilter) {
         inventoryFilter.value = button.getAttribute("data-category-filter") || "";
+      }
+      if (severityFilter && "value" in severityFilter) {
+        severityFilter.value = button.getAttribute("data-severity-filter") || "";
       }
       if (advancedReview && "open" in advancedReview) {
         advancedReview.open = true;
