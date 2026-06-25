@@ -32,6 +32,8 @@ HTML reports also include local browser filters for severity, rule ID, inventory
 
 The HTML UI includes an English / Traditional Chinese toggle for report chrome such as headings, filters, table labels, severity labels, inventory labels, empty states, and privacy text. The toggle is browser-only and does not change the JSON report schema.
 
+HTML reports now put categorized inventory/finding cards before the full findings table. Categories are derived from existing `inventory.type` and finding `itemId` data, so this does not change the JSON schema. The full table remains available in an advanced review section.
+
 ## Stability
 
 The report shape is pre-1.0 and may change, but `privacy.telemetry` and `privacy.uploaded` should remain explicit booleans.

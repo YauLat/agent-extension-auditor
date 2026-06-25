@@ -120,6 +120,8 @@ describe("agent extension scanner", () => {
     expect(html).toContain("Overview risk summary");
     expect(html).toContain("Discovered extension surface");
     expect(html).toContain("Recommended");
+    expect(html).toContain("Category browser");
+    expect(html).toContain("Categorized surface");
     expect(html).toContain("Review queue");
     expect(html).toContain("Scanned locations");
     expect(html).toContain("No telemetry. No upload. Local-only.");
@@ -130,6 +132,9 @@ describe("agent extension scanner", () => {
     expect(html).toContain("data-testid=\"inventory-filter\"");
     expect(html).toContain("data-testid=\"location-filter\"");
     expect(html).toContain("data-testid=\"search-filter\"");
+    expect(html).toContain("data-category-section=\"skill\"");
+    expect(html).toContain("data-category-filter=\"skill\"");
+    expect(html).toContain("data-advanced-review");
     expect(html).toContain("data-finding-row");
     expect(html).toContain("function applyFilters");
   });
@@ -142,6 +147,8 @@ describe("agent extension scanner", () => {
     expect(html).toContain("function applyLanguage");
     expect(html).toContain("繁中");
     expect(html).toContain("風險總覽");
+    expect(html).toContain("分類版面");
+    expect(html).toContain("審閱此分類");
     expect(html).toContain("清單與下一步");
     expect(html).toContain("共 {total} 項，顯示 {visible} 項");
     expect(html).toContain("data-i18n-placeholder=\"searchPlaceholder\"");

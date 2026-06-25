@@ -44,7 +44,7 @@ Report formats:
 - `terminal` prints a compact local summary.
 - `markdown` writes a readable local review packet.
 - `json` writes structured data for local automation.
-- `html` writes a static local dashboard that opens directly in a browser without a server, upload, or account. The dashboard includes an English / Traditional Chinese UI toggle.
+- `html` writes a static local dashboard that opens directly in a browser without a server, upload, or account. The dashboard includes categorized inventory/finding cards, an advanced findings table, and an English / Traditional Chinese UI toggle.
 
 ## What It Scans
 

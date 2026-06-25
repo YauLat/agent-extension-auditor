@@ -3,6 +3,17 @@ import type { Finding, InventoryItem, InventoryType, ScanReport, Severity } from
 
 type Language = "en" | "zh-Hant";
 
+interface CategorySummary {
+  type: InventoryType;
+  itemCount: number;
+  findings: Finding[];
+  severityCounts: Record<Severity, number>;
+  sourceBuckets: Array<{
+    name: string;
+    count: number;
+  }>;
+}
+
 const severities: Severity[] = ["critical", "high", "medium", "low", "info"];
 const inventoryTypes: InventoryType[] = ["skill", "plugin", "mcpServer", "hook", "config", "package"];
 
@@ -13,9 +24,15 @@ const htmlCopy = {
     allRules: "All rules",
     allSeverities: "All severities",
     allTypes: "All types",
+    advancedReview: "Advanced review",
     clearFiltersHelp: "Adjust filters or clear search to see more results.",
     clearFiltersTitle: "No matching findings",
     config: "Configs",
+    categorizedSurface: "Categorized surface",
+    categoryBrowser: "Category browser",
+    categoryBrowserLabel: "Categorized inventory and findings",
+    categoryFindingCount: "{count} findings",
+    categoryItemCount: "{count} items",
     critical: "Critical",
     discoveredSurface: "Discovered extension surface",
     documentTitle: "Agent Extension Audit",
@@ -41,8 +58,10 @@ const htmlCopy = {
     missing: "Missing",
     noFindingsHelp: "The scan did not find review-worthy extension behavior in the selected locations.",
     noFindingsTitle: "No findings detected",
+    noCategoryFindings: "No findings in this category.",
     noImmediateActions: "No immediate next actions.",
     noLocations: "No scanned locations were recorded.",
+    openFullTable: "Open full findings table",
     overviewRiskSummary: "Overview risk summary",
     package: "Packages",
     plugin: "Plugins",
@@ -54,6 +73,7 @@ const htmlCopy = {
     recommendation: "Recommendation",
     recommended: "Recommended",
     reset: "Reset",
+    reviewCategory: "Review this category",
     reviewQueue: "Review queue",
     rule: "Rule",
     scannedLocations: "Scanned locations",
@@ -62,16 +82,24 @@ const htmlCopy = {
     searchPlaceholder: "Rule, message, path",
     severity: "Severity",
     skill: "Skills",
+    sourceBreakdown: "Source breakdown",
     title: "Title",
+    topFindings: "Top findings",
     nextActions: "Next actions"
   },
   "zh-Hant": {
     allRules: "所有規則",
     allSeverities: "所有嚴重度",
     allTypes: "所有類型",
+    advancedReview: "進階審閱",
     clearFiltersHelp: "調整篩選或清除搜尋即可查看更多結果。",
     clearFiltersTitle: "沒有符合條件的發現",
     config: "設定",
+    categorizedSurface: "分類版面",
+    categoryBrowser: "分類瀏覽",
+    categoryBrowserLabel: "分類清單與發現",
+    categoryFindingCount: "{count} 項發現",
+    categoryItemCount: "{count} 個項目",
     critical: "嚴重",
     discoveredSurface: "已發現的擴充面",
     documentTitle: "Agent 擴充風險審核",
@@ -97,8 +125,10 @@ const htmlCopy = {
     missing: "缺失",
     noFindingsHelp: "這次掃描在選定位置中沒有發現需要審閱的擴充行為。",
     noFindingsTitle: "沒有發現風險項",
+    noCategoryFindings: "此分類沒有發現項。",
     noImmediateActions: "目前沒有立即行動項。",
     noLocations: "沒有記錄掃描位置。",
+    openFullTable: "打開完整 findings table",
     overviewRiskSummary: "風險總覽",
     package: "Packages",
     plugin: "Plugins",
@@ -109,6 +139,7 @@ const htmlCopy = {
     recommendation: "建議",
     recommended: "建議",
     reset: "重設",
+    reviewCategory: "審閱此分類",
     reviewQueue: "審閱佇列",
     rule: "規則",
     scannedLocations: "掃描位置",
@@ -117,7 +148,9 @@ const htmlCopy = {
     searchPlaceholder: "規則、訊息、路徑",
     severity: "嚴重度",
     skill: "Skills",
+    sourceBreakdown: "來源分佈",
     title: "標題",
+    topFindings: "重點發現",
     nextActions: "下一步"
   }
 } satisfies Record<Language, Record<string, string>>;
@@ -178,20 +211,34 @@ ${renderCss()}
       </div>
     </section>
 
-    <section class="panel" aria-label="Findings" data-i18n-aria-label="findings">
-      <div class="section-heading with-meta">
-        <div>
+    <section class="panel" aria-label="Categorized inventory and findings" data-i18n-aria-label="categoryBrowserLabel">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="categoryBrowser">${copy.categoryBrowser}</p>
+        <h2 data-i18n="categorizedSurface">${copy.categorizedSurface}</h2>
+      </div>
+      ${renderCategoryBrowser(report, sortedFindings, inventoryById)}
+    </section>
+
+    <details class="panel advanced-review" aria-label="Findings" data-i18n-aria-label="findings" data-advanced-review>
+      <summary>
+        <span>
+          <span class="eyebrow" data-i18n="advancedReview">${copy.advancedReview}</span>
+          <strong data-i18n="openFullTable">${copy.openFullTable}</strong>
+        </span>
+        <span class="meta" data-filter-count data-total-findings="${sortedFindings.length}">${formatTemplate(copy.findingsCount, {
+          visible: sortedFindings.length,
+          total: sortedFindings.length
+        })}</span>
+      </summary>
+      <div class="advanced-body">
+        <div class="section-heading">
           <p class="eyebrow" data-i18n="findings">${copy.findings}</p>
           <h2 data-i18n="reviewQueue">${copy.reviewQueue}</h2>
         </div>
-        <p class="meta" data-filter-count data-total-findings="${sortedFindings.length}">${formatTemplate(copy.findingsCount, {
-          visible: sortedFindings.length,
-          total: sortedFindings.length
-        })}</p>
+        ${renderFilters(ruleIds)}
+        ${renderFindings(sortedFindings, inventoryById)}
       </div>
-      ${renderFilters(ruleIds)}
-      ${renderFindings(sortedFindings, inventoryById)}
-    </section>
+    </details>
 
     <section class="panel" aria-label="Scanned locations" data-i18n-aria-label="scannedLocations">
       <div class="section-heading with-meta">
@@ -257,6 +304,161 @@ function renderActions(report: ScanReport): string {
   return `<ol class="action-list">
     ${report.recommendedActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("\n")}
   </ol>`;
+}
+
+function renderCategoryBrowser(
+  report: ScanReport,
+  findings: Finding[],
+  inventoryById: Map<string, InventoryItem>
+): string {
+  const categories = buildCategorySummaries(report, findings, inventoryById);
+
+  return `<div class="category-grid">
+    ${categories.map((category) => renderCategoryCard(category)).join("\n")}
+  </div>`;
+}
+
+function renderCategoryCard(category: CategorySummary): string {
+  const copy = htmlCopy[defaultLanguage];
+  const topFindings = sortFindings(category.findings).slice(0, 5);
+
+  return `<article class="category-card" data-category-section="${category.type}">
+    <header>
+      <div>
+        <span class="category-title" data-i18n-inventory="${category.type}">${copy[category.type]}</span>
+        <div class="category-metrics">
+          <span data-i18n-template="categoryItemCount" data-count="${category.itemCount}">${formatTemplate(copy.categoryItemCount, {
+            count: category.itemCount
+          })}</span>
+          <span data-i18n-template="categoryFindingCount" data-count="${category.findings.length}">${formatTemplate(copy.categoryFindingCount, {
+            count: category.findings.length
+          })}</span>
+        </div>
+      </div>
+      <button type="button" class="category-focus" data-category-filter="${category.type}" data-i18n="reviewCategory">${copy.reviewCategory}</button>
+    </header>
+    <div class="severity-strip" aria-label="${copy.severity}">
+      ${severities.map((severity) => renderSeverityChip(severity, category.severityCounts[severity])).join("\n")}
+    </div>
+    ${renderSourceBreakdown(category)}
+    <div class="category-findings">
+      <h3 data-i18n="topFindings">${copy.topFindings}</h3>
+      ${topFindings.length > 0 ? renderMiniFindings(topFindings) : `<div class="empty-inline" data-i18n="noCategoryFindings">${copy.noCategoryFindings}</div>`}
+    </div>
+  </article>`;
+}
+
+function renderSeverityChip(severity: Severity, count: number): string {
+  const copy = htmlCopy[defaultLanguage];
+  return `<span class="severity-chip severity-chip-${severity}">
+    <span data-i18n-severity="${severity}">${copy[severity]}</span>
+    <strong>${count}</strong>
+  </span>`;
+}
+
+function renderSourceBreakdown(category: CategorySummary): string {
+  const copy = htmlCopy[defaultLanguage];
+  if (category.sourceBuckets.length === 0) {
+    return "";
+  }
+
+  return `<div class="source-breakdown">
+    <h3 data-i18n="sourceBreakdown">${copy.sourceBreakdown}</h3>
+    <div class="source-list">
+      ${category.sourceBuckets
+        .slice(0, 5)
+        .map((bucket) => `<span><strong>${bucket.count}</strong> ${escapeHtml(bucket.name)}</span>`)
+        .join("\n")}
+    </div>
+  </div>`;
+}
+
+function renderMiniFindings(findings: Finding[]): string {
+  const copy = htmlCopy[defaultLanguage];
+  return `<ol class="mini-finding-list">
+    ${findings
+      .map((finding) => {
+        const location = formatLocation(finding);
+        return `<li>
+          <span class="badge badge-${finding.severity}" data-i18n-severity="${finding.severity}">${copy[finding.severity]}</span>
+          <div>
+            <strong><code>${escapeHtml(finding.ruleId)}</code> ${escapeHtml(finding.title)}</strong>
+            <p>${escapeHtml(finding.message)}</p>
+            <code>${escapeHtml(location)}</code>
+          </div>
+        </li>`;
+      })
+      .join("\n")}
+  </ol>`;
+}
+
+function buildCategorySummaries(
+  report: ScanReport,
+  findings: Finding[],
+  inventoryById: Map<string, InventoryItem>
+): CategorySummary[] {
+  const categories = new Map<InventoryType, CategorySummary>(
+    inventoryTypes.map((type) => [
+      type,
+      {
+        type,
+        itemCount: report.inventory.filter((item) => item.type === type).length,
+        findings: [],
+        severityCounts: {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0
+        },
+        sourceBuckets: summarizeSourceBuckets(report.inventory.filter((item) => item.type === type))
+      }
+    ])
+  );
+
+  for (const finding of findings) {
+    const type = getFindingInventoryType(finding, inventoryById);
+    const category = categories.get(type);
+    if (!category) {
+      continue;
+    }
+    category.findings.push(finding);
+    category.severityCounts[finding.severity] += 1;
+  }
+
+  return inventoryTypes.map((type) => categories.get(type)).filter((category): category is CategorySummary => Boolean(category));
+}
+
+function summarizeSourceBuckets(items: InventoryItem[]): Array<{ name: string; count: number }> {
+  const buckets = new Map<string, number>();
+  for (const item of items) {
+    const bucket = sourceBucketForPath(item.displayPath);
+    buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+  }
+  return Array.from(buckets, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function sourceBucketForPath(displayPath: string): string {
+  const pathValue = displayPath.toLowerCase();
+  if (pathValue.includes(".skillclaw")) {
+    return "SkillClaw";
+  }
+  if (pathValue.includes(".codex")) {
+    return "Codex";
+  }
+  if (pathValue.includes(".claude")) {
+    return "Claude";
+  }
+  if (pathValue.includes(".hermes")) {
+    return "Hermes";
+  }
+  if (pathValue.includes("openclaw")) {
+    return "OpenClaw";
+  }
+  if (pathValue.includes(".agents") || pathValue.startsWith("./") || !pathValue.startsWith("~")) {
+    return "Workspace";
+  }
+  return "Other";
 }
 
 function renderFilters(ruleIds: string[]): string {
@@ -485,6 +687,37 @@ body {
   margin-bottom: 18px;
 }
 
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.language-toggle {
+  background: #eee6d8;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+}
+
+.lang-button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  min-height: 30px;
+  padding: 4px 9px;
+}
+
+.lang-button.is-active {
+  background: var(--ink);
+  color: #fffefa;
+}
+
 h1,
 h2,
 h3,
@@ -636,6 +869,181 @@ h3 {
 
 .action-list li + li {
   margin-top: 8px;
+}
+
+.category-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.category-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.category-card header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.category-title {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.category-metrics {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.category-focus {
+  background: #fffefa;
+  color: var(--ink);
+  font-size: 0.82rem;
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+.severity-strip {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.severity-chip {
+  border-left: 3px solid var(--accent);
+  background: #fbf7ed;
+  border-radius: 6px;
+  display: block;
+  min-width: 0;
+  padding: 7px;
+}
+
+.severity-chip span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.severity-chip strong {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+
+.severity-chip-critical {
+  --accent: var(--critical);
+}
+
+.severity-chip-high {
+  --accent: var(--high);
+}
+
+.severity-chip-medium {
+  --accent: var(--medium);
+}
+
+.severity-chip-low {
+  --accent: var(--low);
+}
+
+.severity-chip-info {
+  --accent: var(--info);
+}
+
+.source-breakdown {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.source-breakdown h3,
+.category-findings h3 {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-list span {
+  background: #eee6d8;
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  padding: 4px 8px;
+}
+
+.category-findings {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.mini-finding-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mini-finding-list li {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+.mini-finding-list p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 2px 0;
+}
+
+.advanced-review summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.advanced-review summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-review summary strong {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.advanced-body {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
 }
 
 .filters {
@@ -810,6 +1218,7 @@ tr[hidden],
   .summary-grid,
   .split-panel,
   .inventory-grid,
+  .category-grid,
   .filters {
     grid-template-columns: 1fr 1fr;
   }
@@ -831,6 +1240,10 @@ tr[hidden],
     flex-direction: column;
   }
 
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
   .privacy-pill {
     white-space: normal;
   }
@@ -838,7 +1251,22 @@ tr[hidden],
   .summary-grid,
   .split-panel,
   .inventory-grid,
+  .category-grid,
   .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .category-card header,
+  .advanced-review summary {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .severity-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mini-finding-list li {
     grid-template-columns: 1fr;
   }
 
@@ -890,6 +1318,8 @@ function renderScript(): string {
   const storageKey = "agent-audit-report-language";
   const rows = Array.from(document.querySelectorAll("[data-finding-row]"));
   const languageButtons = Array.from(document.querySelectorAll("[data-lang-option]"));
+  const categoryButtons = Array.from(document.querySelectorAll("[data-category-filter]"));
+  const advancedReview = document.querySelector("[data-advanced-review]");
   const severityFilter = document.getElementById("severity-filter");
   const ruleFilter = document.getElementById("rule-filter");
   const inventoryFilter = document.getElementById("inventory-filter");
@@ -1046,6 +1476,19 @@ function renderScript(): string {
   for (const button of languageButtons) {
     button.addEventListener("click", function () {
       applyLanguage(button.getAttribute("data-lang-option") || defaultLanguage);
+    });
+  }
+
+  for (const button of categoryButtons) {
+    button.addEventListener("click", function () {
+      if (inventoryFilter && "value" in inventoryFilter) {
+        inventoryFilter.value = button.getAttribute("data-category-filter") || "";
+      }
+      if (advancedReview && "open" in advancedReview) {
+        advancedReview.open = true;
+        advancedReview.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      applyFilters();
     });
   }
 
