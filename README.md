@@ -133,7 +133,7 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "privacy": {
     "telemetry": false,
     "uploaded": false
