@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Audit Glass Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f2ea;
+      --ink: #17211c;
+      --muted: #5e6a63;
+      --faint: #7d8781;
+      --line: rgba(23, 33, 28, 0.13);
+      --glass: rgba(255, 255, 255, 0.58);
+      --glass-strong: rgba(255, 255, 255, 0.76);
+      --shadow: 0 28px 80px rgba(37, 45, 39, 0.2);
+      --critical: #af2029;
+      --high: #d75827;
+      --medium: #c88a05;
+      --low: #438a56;
+      --info: #32728f;
+      --radius-xl: 34px;
+      --radius-lg: 24px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(120deg, rgba(238, 232, 219, 0.9), rgba(241, 247, 238, 0.9) 48%, rgba(249, 242, 233, 0.95)),
+        var(--bg);
+      color: var(--ink);
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      background-image:
+        linear-gradient(rgba(23, 33, 28, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 33, 28, 0.03) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 82%);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .page {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 28px auto;
+    }
+
+    .device-frame {
+      position: relative;
+      overflow: hidden;
+      min-height: calc(100vh - 56px);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 42px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.36)),
+        rgba(255, 255, 255, 0.48);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.88), inset 0 -1px 0 rgba(23, 33, 28, 0.08);
+      backdrop-filter: blur(26px) saturate(1.35);
+    }
+
+    .device-frame::before {
+      position: absolute;
+      inset: 10px;
+      pointer-events: none;
+      content: "";
+      border: 1px solid rgba(23, 33, 28, 0.08);
+      border-radius: 34px;
+      box-shadow: inset 0 0 44px rgba(255, 255, 255, 0.32);
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 244px minmax(0, 1fr);
+      min-height: calc(100vh - 56px);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      padding: 28px 18px 28px 28px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.24);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .mark {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border: 1px solid rgba(23, 33, 28, 0.14);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.58);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      font-weight: 800;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 22px;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .eyebrow {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .privacy-card,
+    .glass-card,
+    .control-bar,
+    .finding-card {
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      background: var(--glass);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 14px 36px rgba(37, 45, 39, 0.08);
+      backdrop-filter: blur(18px) saturate(1.25);
+    }
+
+    .privacy-card {
+      padding: 14px;
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .category-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .category-button {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .category-button strong {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .category-button span {
+      color: var(--faint);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .category-button.is-active {
+      border-color: rgba(23, 33, 28, 0.12);
+      background: rgba(255, 255, 255, 0.66);
+      color: var(--ink);
+      box-shadow: inset 3px 0 0 var(--info);
+    }
+
+    .content {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+      padding: 28px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .title-block {
+      display: grid;
+      gap: 6px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .file-button,
+    .lang-button,
+    .reset-button,
+    .severity-button {
+      border: 1px solid rgba(23, 33, 28, 0.14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.64);
+      color: var(--ink);
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .file-button input {
+      display: none;
+    }
+
+    .lang-button.is-active,
+    .severity-button.is-active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .risk-card {
+      min-height: 104px;
+      padding: 15px;
+      border-radius: 18px;
+    }
+
+    .risk-card strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .risk-card span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .risk-critical { box-shadow: inset 5px 0 0 var(--critical), 0 14px 36px rgba(37, 45, 39, 0.08); }
+    .risk-high { box-shadow: inset 5px 0 0 var(--high), 0 14px 36px rgba(37, 45, 39, 0.08); }
+    .risk-medium { box-shadow: inset 5px 0 0 var(--medium), 0 14px 36px rgba(37, 45, 39, 0.08); }
+    .risk-low { box-shadow: inset 5px 0 0 var(--low), 0 14px 36px rgba(37, 45, 39, 0.08); }
+    .risk-info { box-shadow: inset 5px 0 0 var(--info), 0 14px 36px rgba(37, 45, 39, 0.08); }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .glass-card {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+
+    .inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .inventory-tile {
+      padding: 12px;
+      border: 1px solid rgba(23, 33, 28, 0.09);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.46);
+    }
+
+    .inventory-tile strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+    }
+
+    .action-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .control-bar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto auto;
+      gap: 10px;
+      align-items: end;
+      padding: 12px;
+      border-radius: 18px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid rgba(23, 33, 28, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    button:focus-visible {
+      outline: 2px solid rgba(50, 114, 143, 0.4);
+      outline-offset: 2px;
+    }
+
+    .severity-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .findings-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .finding-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .finding-card {
+      padding: 14px;
+      border-radius: 18px;
+    }
+
+    .finding-top {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: start;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .badge-critical { background: var(--critical); }
+    .badge-high { background: var(--high); }
+    .badge-medium { background: var(--medium); }
+    .badge-low { background: var(--low); }
+    .badge-info { background: var(--info); }
+
+    .rule {
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+
+    .finding-card h3 {
+      margin-top: 8px;
+      font-size: 16px;
+    }
+
+    .finding-card p {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .path {
+      display: block;
+      margin-top: 10px;
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .severity-breakdown {
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr) 34px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .bar {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(23, 33, 28, 0.08);
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .bar-critical span { background: var(--critical); }
+    .bar-high span { background: var(--high); }
+    .bar-medium span { background: var(--medium); }
+    .bar-low span { background: var(--low); }
+    .bar-info span { background: var(--info); }
+
+    .location-list {
+      display: grid;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .location-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .location-row code {
+      color: var(--ink);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .empty-state {
+      padding: 28px;
+      border: 1px dashed rgba(23, 33, 28, 0.22);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.34);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .status-line {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 980px) {
+      .app,
+      .dashboard-grid,
+      .findings-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 22px;
+      }
+
+      .category-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        width: 100%;
+        margin: 0;
+      }
+
+      .device-frame {
+        min-height: 100vh;
+        border-radius: 0;
+      }
+
+      .device-frame::before {
+        display: none;
+      }
+
+      .content {
+        padding: 18px;
+      }
+
+      .topbar,
+      .control-bar,
+      .inventory-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .category-list {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      h2 {
+        font-size: 19px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="device-frame" aria-label="Agent audit standalone glass dashboard">
+      <div class="app">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="mark">AA</div>
+            <div>
+              <h1>Agent Audit</h1>
+              <p class="muted" data-i18n="subtitle">Standalone local frontend</p>
+            </div>
+          </div>
+
+          <div class="privacy-card">
+            <strong data-i18n="privacyTitle">Local-only</strong>
+            <p data-i18n="privacyText">No telemetry, no upload, no account. Load JSON from disk or review the sample data.</p>
+          </div>
+
+          <nav>
+            <p class="eyebrow" data-i18n="categories">Categories</p>
+            <div class="category-list" id="categoryList"></div>
+          </nav>
+        </aside>
+
+        <section class="content">
+          <header class="topbar">
+            <div class="title-block">
+              <p class="eyebrow" data-i18n="eyebrow">Glass review surface</p>
+              <h2 data-i18n="headline">Extension risk dashboard</h2>
+              <p class="status-line" id="reportMeta"></p>
+            </div>
+            <div class="actions">
+              <label class="file-button">
+                <span data-i18n="loadJson">Load JSON</span>
+                <input id="jsonFile" type="file" accept="application/json,.json">
+              </label>
+              <button class="lang-button is-active" type="button" data-lang="en">EN</button>
+              <button class="lang-button" type="button" data-lang="zh-Hant">繁中</button>
+            </div>
+          </header>
+
+          <section class="summary-grid" id="riskSummary" aria-label="Risk summary"></section>
+
+          <section class="dashboard-grid">
+            <article class="glass-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow" data-i18n="inventory">Inventory</p>
+                  <h2 data-i18n="surface">Local extension surface</h2>
+                </div>
+              </div>
+              <div class="inventory-grid" id="inventoryGrid"></div>
+            </article>
+
+            <article class="glass-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow" data-i18n="recommended">Recommended</p>
+                  <h2 data-i18n="nextActions">Next actions</h2>
+                </div>
+              </div>
+              <ol class="action-list" id="actionList"></ol>
+            </article>
+          </section>
+
+          <section class="control-bar" aria-label="Finding filters">
+            <label>
+              <span data-i18n="search">Search</span>
+              <input id="searchInput" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Rule, message, path">
+            </label>
+            <label>
+              <span data-i18n="rule">Rule</span>
+              <select id="ruleFilter"></select>
+            </label>
+            <button class="reset-button" id="resetFilters" type="button" data-i18n="reset">Reset</button>
+          </section>
+
+          <div class="severity-tabs" id="severityTabs" aria-label="Severity filters"></div>
+
+          <section class="findings-layout">
+            <div>
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow" data-i18n="reviewQueue">Review queue</p>
+                  <h2 id="queueTitle"></h2>
+                </div>
+                <p class="status-line" id="visibleCount"></p>
+              </div>
+              <div class="finding-list" id="findingList"></div>
+            </div>
+
+            <aside class="side-stack">
+              <article class="glass-card">
+                <div class="card-head">
+                  <div>
+                    <p class="eyebrow" data-i18n="severity">Severity</p>
+                    <h2 data-i18n="breakdown">Breakdown</h2>
+                  </div>
+                </div>
+                <div class="severity-breakdown" id="severityBreakdown"></div>
+              </article>
+
+              <article class="glass-card">
+                <div class="card-head">
+                  <div>
+                    <p class="eyebrow" data-i18n="scope">Scope</p>
+                    <h2 data-i18n="scannedLocations">Scanned locations</h2>
+                  </div>
+                </div>
+                <div class="location-list" id="locationList"></div>
+              </article>
+            </aside>
+          </section>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const severities = ["critical", "high", "medium", "low", "info"];
+    const inventoryTypes = ["skill", "plugin", "mcpServer", "hook", "config", "package"];
+
+    const copy = {
+      en: {
+        subtitle: "Standalone local frontend",
+        privacyTitle: "Local-only",
+        privacyText: "No telemetry, no upload, no account. Load JSON from disk or review the sample data.",
+        categories: "Categories",
+        eyebrow: "Glass review surface",
+        headline: "Extension risk dashboard",
+        loadJson: "Load JSON",
+        inventory: "Inventory",
+        surface: "Local extension surface",
+        recommended: "Recommended",
+        nextActions: "Next actions",
+        search: "Search",
+        searchPlaceholder: "Rule, message, path",
+        rule: "Rule",
+        reset: "Reset",
+        allRules: "All rules",
+        allSeverities: "All",
+        reviewQueue: "Review queue",
+        severity: "Severity",
+        breakdown: "Breakdown",
+        scope: "Scope",
+        scannedLocations: "Scanned locations",
+        noFindings: "No findings match the current filters.",
+        noActions: "No immediate next actions.",
+        noLocations: "No scanned locations recorded.",
+        sample: "Sample data",
+        loaded: "Loaded JSON",
+        visible: "{visible} of {total} findings",
+        generated: "{source} - agent-audit {version} - {date}",
+        types: {
+          skill: "Skills",
+          plugin: "Plugins",
+          mcpServer: "MCP servers",
+          hook: "Hooks",
+          config: "Configs",
+          package: "Packages"
+        },
+        severityLabels: {
+          critical: "Critical",
+          high: "High",
+          medium: "Medium",
+          low: "Low",
+          info: "Info"
+        }
+      },
+      "zh-Hant": {
+        subtitle: "獨立本機前端",
+        privacyTitle: "本機限定",
+        privacyText: "無 telemetry、不上傳、不需要帳號。可從磁碟載入 JSON，或先查看 sample data。",
+        categories: "分類",
+        eyebrow: "玻璃審閱介面",
+        headline: "擴充風險儀表板",
+        loadJson: "載入 JSON",
+        inventory: "清單",
+        surface: "本機擴充面",
+        recommended: "建議",
+        nextActions: "下一步",
+        search: "搜尋",
+        searchPlaceholder: "規則、訊息、路徑",
+        rule: "規則",
+        reset: "重設",
+        allRules: "所有規則",
+        allSeverities: "全部",
+        reviewQueue: "審閱佇列",
+        severity: "嚴重度",
+        breakdown: "分佈",
+        scope: "範圍",
+        scannedLocations: "掃描位置",
+        noFindings: "目前篩選沒有符合的 findings。",
+        noActions: "目前沒有立即行動項。",
+        noLocations: "沒有記錄掃描位置。",
+        sample: "Sample data",
+        loaded: "已載入 JSON",
+        visible: "共 {total} 項，顯示 {visible} 項",
+        generated: "{source} - agent-audit {version} - {date}",
+        types: {
+          skill: "Skills",
+          plugin: "Plugins",
+          mcpServer: "MCP 伺服器",
+          hook: "Hooks",
+          config: "設定",
+          package: "Packages"
+        },
+        severityLabels: {
+          critical: "嚴重",
+          high: "高",
+          medium: "中",
+          low: "低",
+          info: "資訊"
+        }
+      }
+    };
+
+    const sampleReport = {
+      tool: "agent-audit",
+      version: "0.2.1",
+      generatedAt: "2026-07-10T00:00:00.000Z",
+      privacy: {
+        telemetry: false,
+        uploaded: false
+      },
+      summary: {
+        findings: {
+          critical: 2,
+          high: 4,
+          medium: 8,
+          low: 3,
+          info: 0
+        },
+        inventory: {
+          skills: 18,
+          plugins: 3,
+          mcpServers: 5,
+          hooks: 2,
+          configs: 4,
+          packages: 3
+        }
+      },
+      scannedLocations: [
+        { displayPath: "~/.codex/skills", reason: "Codex skills", kind: "directory", exists: true },
+        { displayPath: "~/.claude/plugins", reason: "Claude plugins", kind: "directory", exists: true },
+        { displayPath: "./.mcp.json", reason: "Workspace MCP config", kind: "file", exists: true }
+      ],
+      inventory: [
+        { id: "skill-1", type: "skill", displayPath: "~/.codex/skills/reach/SKILL.md" },
+        { id: "skill-2", type: "skill", displayPath: "~/.claude/skills/duplicate/SKILL.md" },
+        { id: "mcp-1", type: "mcpServer", displayPath: "./.mcp.json" },
+        { id: "plugin-1", type: "plugin", displayPath: "~/.claude/plugins/local/package.json" },
+        { id: "hook-1", type: "hook", displayPath: "~/.claude/settings.json" },
+        { id: "config-1", type: "config", displayPath: "~/.codex/config.toml" }
+      ],
+      recommendedActions: [
+        "Review critical and high findings first.",
+        "Confirm MCP stdio commands and plugin install scripts are expected.",
+        "Keep this report local because it includes local paths."
+      ],
+      findings: [
+        {
+          itemId: "skill-1",
+          severity: "critical",
+          ruleId: "REMOTE_SCRIPT_EXECUTION",
+          title: "Remote script execution pattern",
+          message: "File contains a remote script execution pattern.",
+          recommendation: "Review whether the skill needs remote execution before trusting it.",
+          location: { displayPath: "~/.codex/skills/reach/SKILL.md", line: 73 }
+        },
+        {
+          itemId: "mcp-1",
+          severity: "high",
+          ruleId: "MCP_STDIO_COMMAND",
+          title: "MCP server starts a local command",
+          message: "MCP configuration launches a local process through stdio.",
+          recommendation: "Confirm the command path, arguments, and environment before enabling it.",
+          location: { displayPath: "./.mcp.json", line: 12 }
+        },
+        {
+          itemId: "plugin-1",
+          severity: "high",
+          ruleId: "PLUGIN_POSTINSTALL",
+          title: "Package install script",
+          message: "Plugin package defines an install-time script.",
+          recommendation: "Inspect scripts before installing or updating the plugin.",
+          location: { displayPath: "~/.claude/plugins/local/package.json", line: 9 }
+        },
+        {
+          itemId: "skill-2",
+          severity: "medium",
+          ruleId: "DUPLICATE_SKILL_NAME",
+          title: "Duplicate skill name",
+          message: "Same skill name appears in more than one local root.",
+          recommendation: "Pick the canonical copy and remove stale duplicates later.",
+          location: { displayPath: "~/.claude/skills/duplicate/SKILL.md", line: 1 }
+        },
+        {
+          itemId: "hook-1",
+          severity: "medium",
+          ruleId: "HOOK_SHELL_COMMAND",
+          title: "Hook shell command",
+          message: "Hook configuration can run a shell command.",
+          recommendation: "Verify the hook is expected and scoped to trusted projects.",
+          location: { displayPath: "~/.claude/settings.json", line: 22 }
+        },
+        {
+          itemId: "config-1",
+          severity: "low",
+          ruleId: "UNKNOWN_SOURCE",
+          title: "Extension source could not be determined",
+          message: "The extension path does not map to a known source bucket.",
+          recommendation: "Confirm where this file came from before trusting it.",
+          location: { displayPath: "~/.codex/config.toml", line: 4 }
+        }
+      ]
+    };
+
+    const state = {
+      report: sampleReport,
+      source: "sample",
+      lang: "en",
+      category: "skill",
+      severity: "",
+      rule: "",
+      query: ""
+    };
+
+    const summaryInventoryKeys = {
+      skill: "skills",
+      plugin: "plugins",
+      mcpServer: "mcpServers",
+      hook: "hooks",
+      config: "configs",
+      package: "packages"
+    };
+
+    const $ = (selector) => document.querySelector(selector);
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function t(key) {
+      return copy[state.lang][key] || key;
+    }
+
+    function format(template, values) {
+      return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+    }
+
+    function typeLabel(type) {
+      return copy[state.lang].types[type] || type;
+    }
+
+    function severityLabel(severity) {
+      return copy[state.lang].severityLabels[severity] || severity;
+    }
+
+    function itemMap() {
+      return new Map((state.report.inventory || []).map((item) => [item.id, item]));
+    }
+
+    function findingType(finding, items) {
+      return finding.inventoryType || items.get(finding.itemId)?.type || "config";
+    }
+
+    function locationText(finding) {
+      const location = finding.location || {};
+      const line = location.line ? `:${location.line}` : "";
+      return `${location.displayPath || finding.displayPath || "unknown"}${line}`;
+    }
+
+    function categoryCount(type) {
+      const items = state.report.inventory || [];
+      const findings = state.report.findings || [];
+      const itemsById = itemMap();
+      return {
+        items: items.filter((item) => item.type === type).length,
+        findings: findings.filter((finding) => findingType(finding, itemsById) === type).length
+      };
+    }
+
+    function severityCounts(findings) {
+      const counts = Object.fromEntries(severities.map((severity) => [severity, 0]));
+      for (const finding of findings) {
+        if (counts[finding.severity] !== undefined) counts[finding.severity] += 1;
+      }
+      return counts;
+    }
+
+    function currentFindings() {
+      const items = itemMap();
+      const search = state.query.trim().toLowerCase();
+      return (state.report.findings || []).filter((finding) => {
+        const type = findingType(finding, items);
+        const location = locationText(finding);
+        const haystack = [
+          finding.ruleId,
+          finding.title,
+          finding.message,
+          finding.recommendation,
+          location,
+          type
+        ].join(" ").toLowerCase();
+        return type === state.category &&
+          (!state.severity || finding.severity === state.severity) &&
+          (!state.rule || finding.ruleId === state.rule) &&
+          (!search || haystack.includes(search));
+      });
+    }
+
+    function updateCopy() {
+      document.documentElement.lang = state.lang === "zh-Hant" ? "zh-Hant" : "en";
+      document.documentElement.dataset.lang = state.lang;
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        node.textContent = t(node.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+        node.placeholder = t(node.dataset.i18nPlaceholder);
+      });
+      document.querySelectorAll(".lang-button").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.lang === state.lang);
+      });
+    }
+
+    function renderMeta() {
+      const source = state.source === "loaded" ? t("loaded") : t("sample");
+      const date = state.report.generatedAt ? new Date(state.report.generatedAt).toLocaleString() : "unknown";
+      $("#reportMeta").textContent = format(t("generated"), {
+        source,
+        version: state.report.version || "unknown",
+        date
+      });
+    }
+
+    function renderRiskSummary() {
+      const counts = state.report.summary?.findings || severityCounts(state.report.findings || []);
+      $("#riskSummary").innerHTML = severities.map((severity) => `
+        <article class="glass-card risk-card risk-${severity}">
+          <span>${escapeHtml(severityLabel(severity))}</span>
+          <strong>${Number(counts[severity] || 0)}</strong>
+        </article>
+      `).join("");
+    }
+
+    function renderInventory() {
+      const summary = state.report.summary?.inventory || {};
+      $("#inventoryGrid").innerHTML = inventoryTypes.map((type) => {
+        const fallback = (state.report.inventory || []).filter((item) => item.type === type).length;
+        const count = summary[summaryInventoryKeys[type]] ?? fallback;
+        return `
+          <div class="inventory-tile">
+            <span class="muted">${escapeHtml(typeLabel(type))}</span>
+            <strong>${Number(count || 0)}</strong>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderActions() {
+      const actions = state.report.recommendedActions || [];
+      $("#actionList").innerHTML = actions.length > 0
+        ? actions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")
+        : `<li>${escapeHtml(t("noActions"))}</li>`;
+    }
+
+    function renderCategories() {
+      $("#categoryList").innerHTML = inventoryTypes.map((type) => {
+        const counts = categoryCount(type);
+        return `
+          <button class="category-button ${state.category === type ? "is-active" : ""}" type="button" data-category="${type}">
+            <strong>${escapeHtml(typeLabel(type))}</strong>
+            <span>${counts.items}/${counts.findings}</span>
+          </button>
+        `;
+      }).join("");
+      document.querySelectorAll("[data-category]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.category = button.dataset.category;
+          state.severity = "";
+          render();
+        });
+      });
+    }
+
+    function renderRuleFilter() {
+      const rules = Array.from(new Set((state.report.findings || []).map((finding) => finding.ruleId))).sort();
+      const selected = state.rule;
+      $("#ruleFilter").innerHTML = `<option value="">${escapeHtml(t("allRules"))}</option>` +
+        rules.map((rule) => `<option value="${escapeHtml(rule)}">${escapeHtml(rule)}</option>`).join("");
+      $("#ruleFilter").value = selected;
+    }
+
+    function renderSeverityTabs() {
+      const findings = state.category
+        ? (state.report.findings || []).filter((finding) => findingType(finding, itemMap()) === state.category)
+        : (state.report.findings || []);
+      const counts = severityCounts(findings);
+      $("#severityTabs").innerHTML = [
+        `<button class="severity-button ${state.severity === "" ? "is-active" : ""}" type="button" data-severity="">${escapeHtml(t("allSeverities"))}</button>`,
+        ...severities.map((severity) => `
+          <button class="severity-button ${state.severity === severity ? "is-active" : ""}" type="button" data-severity="${severity}">
+            ${escapeHtml(severityLabel(severity))} ${counts[severity] || 0}
+          </button>
+        `)
+      ].join("");
+      document.querySelectorAll("[data-severity]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.severity = button.dataset.severity;
+          render();
+        });
+      });
+    }
+
+    function renderFindings() {
+      const findings = currentFindings();
+      const total = (state.report.findings || []).filter((finding) => findingType(finding, itemMap()) === state.category).length;
+      $("#queueTitle").textContent = typeLabel(state.category);
+      $("#visibleCount").textContent = format(t("visible"), { visible: findings.length, total });
+      $("#findingList").innerHTML = findings.length > 0
+        ? findings.map((finding) => `
+          <article class="finding-card">
+            <div class="finding-top">
+              <span class="badge badge-${escapeHtml(finding.severity)}">${escapeHtml(severityLabel(finding.severity))}</span>
+              <span class="rule">${escapeHtml(finding.ruleId)}</span>
+            </div>
+            <h3>${escapeHtml(finding.title)}</h3>
+            <p>${escapeHtml(finding.message)}</p>
+            <p>${escapeHtml(finding.recommendation)}</p>
+            <code class="path">${escapeHtml(locationText(finding))}</code>
+          </article>
+        `).join("")
+        : `<div class="empty-state">${escapeHtml(t("noFindings"))}</div>`;
+    }
+
+    function renderBreakdown() {
+      const findings = (state.report.findings || []).filter((finding) => findingType(finding, itemMap()) === state.category);
+      const counts = severityCounts(findings);
+      const max = Math.max(1, ...Object.values(counts));
+      $("#severityBreakdown").innerHTML = severities.map((severity) => {
+        const width = Math.round((counts[severity] / max) * 100);
+        return `
+          <div class="bar-row">
+            <span>${escapeHtml(severityLabel(severity))}</span>
+            <div class="bar bar-${severity}"><span style="width: ${width}%"></span></div>
+            <strong>${counts[severity]}</strong>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderLocations() {
+      const locations = state.report.scannedLocations || [];
+      $("#locationList").innerHTML = locations.length > 0
+        ? locations.map((location) => `
+          <div class="location-row">
+            <div>
+              <code>${escapeHtml(location.displayPath)}</code>
+              <p>${escapeHtml(location.reason || location.kind || "")}</p>
+            </div>
+            <strong>${location.exists === false ? "Missing" : "Found"}</strong>
+          </div>
+        `).join("")
+        : `<div class="empty-state">${escapeHtml(t("noLocations"))}</div>`;
+    }
+
+    function render() {
+      updateCopy();
+      renderMeta();
+      renderRiskSummary();
+      renderInventory();
+      renderActions();
+      renderCategories();
+      renderRuleFilter();
+      renderSeverityTabs();
+      renderFindings();
+      renderBreakdown();
+      renderLocations();
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => resolve(String(reader.result || "")));
+        reader.addEventListener("error", () => reject(reader.error || new Error("Could not read file")));
+        reader.readAsText(file);
+      });
+    }
+
+    $("#searchInput").addEventListener("input", (event) => {
+      state.query = event.target.value;
+      renderFindings();
+    });
+
+    $("#ruleFilter").addEventListener("change", (event) => {
+      state.rule = event.target.value;
+      renderFindings();
+    });
+
+    $("#resetFilters").addEventListener("click", () => {
+      state.query = "";
+      state.rule = "";
+      state.severity = "";
+      $("#searchInput").value = "";
+      render();
+    });
+
+    document.querySelectorAll(".lang-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.lang = button.dataset.lang;
+        render();
+      });
+    });
+
+    $("#jsonFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await readFileAsText(file);
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed.findings) || !Array.isArray(parsed.inventory)) {
+          throw new Error("Invalid agent-audit report JSON");
+        }
+        state.report = parsed;
+        state.source = "loaded";
+        state.category = inventoryTypes.find((type) => categoryCount(type).findings > 0 || categoryCount(type).items > 0) || "skill";
+        state.severity = "";
+        state.rule = "";
+        state.query = "";
+        $("#searchInput").value = "";
+        render();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not load JSON");
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

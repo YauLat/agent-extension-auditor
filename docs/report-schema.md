@@ -1,0 +1,58 @@
+# Report Schema
+
+`agent-audit scan --format json` writes a JSON report with this top-level shape. `agent-audit scan --format html` renders the same report data into a static local dashboard with escaped HTML fields and browser-only filters.
+
+```json
+{
+  "tool": "agent-audit",
+  "version": "0.2.1",
+  "generatedAt": "ISO-8601",
+  "privacy": {
+    "telemetry": false,
+    "uploaded": false
+  },
+  "scannedLocations": [],
+  "inventory": [],
+  "findings": [],
+  "summary": {},
+  "recommendedActions": []
+}
+```
+
+## Privacy Contract
+
+JSON and HTML reports must not include secret values. Findings should reference locations, rule IDs, and review guidance rather than copying sensitive strings. HTML reports are designed to be opened directly from disk and should remain local because they can contain local paths.
+
+New findings can include evidence and remediation metadata without file contents:
+
+```json
+{
+  "evidence": {
+    "kind": "documented",
+    "confidence": "medium",
+    "active": "unknown"
+  },
+  "remediation": {
+    "mode": "review",
+    "title": "Manual review required",
+    "summary": "Review the trigger and side effects."
+  }
+}
+```
+
+`mode: guided` is currently limited to `UNKNOWN_SOURCE` on `SKILL.md`, with action ID `skill.add-source`. Reports describe the supported action but never embed original or replacement file contents.
+
+## Filters
+
+`--min-severity` filters findings before rendering and recomputes `summary.findings` and `recommendedActions`.
+`--no-home`, `--include`, and `--exclude` change which default scan-location paths are scanned, so `scannedLocations`, `inventory`, and `findings` should be interpreted relative to those filters.
+
+HTML reports also include local browser filters for severity, rule ID, inventory type, location keyword, and free-text search across rule, message, and path fields. These filters run entirely in the browser and do not upload data.
+
+The HTML UI includes an English / Traditional Chinese toggle for report chrome such as headings, filters, table labels, severity labels, inventory labels, empty states, and privacy text. The toggle is browser-only and does not change the JSON report schema.
+
+HTML reports now put categorized inventory/finding cards before the full findings table. Categories are derived from existing `inventory.type` and finding `itemId` data, so this does not change the JSON schema. Inside each category, findings are grouped by severity before the full table. The full table remains available in an advanced review section.
+
+## Stability
+
+The report shape is pre-1.0 and may change, but `privacy.telemetry` and `privacy.uploaded` should remain explicit booleans.
