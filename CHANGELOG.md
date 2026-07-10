@@ -1,0 +1,46 @@
+# Changelog
+
+## Unreleased
+
+- Restored canonical project links after moving the source to a clean public repository with new history.
+
+## 0.2.1 - 2026-07-11
+
+- Reworked the README for GitHub/npm open-source distribution, removed the maintainer-specific macOS bundle identifier, and added repository data-hygiene checks.
+- Removed account-linked source, homepage, and issue-tracker package metadata pending migration to a maintainer-neutral project identity.
+
+## 0.2.0 - 2026-07-10
+
+- Added guided `UNKNOWN_SOURCE` repair with a read-only preview, explicit confirmation, content-hash guard, private backup, automatic rescan, and guarded rollback.
+- Added finding evidence state and remediation metadata, while keeping shell, hook, credential, network, and write/delete findings review-only.
+- Narrowed text hook detection so hook and shell markers must appear near each other instead of anywhere in the same file.
+- Added macOS file navigation and a native guided-repair sheet with preview and rollback controls.
+- Added a minimalist Figma-authored macOS app icon with generated 16px through 1024px `.icns` assets.
+- Added a native macOS SwiftUI app with Liquid Glass, categorized inventory cards, severity filters, finding inspectors, scanned locations, and English / Traditional Chinese UI.
+- Added local `.app` packaging with the existing scanner bundled as a local engine; no WebView, local server, telemetry, or cloud upload.
+- Added a standalone no-dependency glass dashboard prototype at `examples/glass-dashboard.html`.
+
+## 0.1.2
+
+- Rewrote the README introduction and added mainstream-language entry points for new users.
+- Added `agent-audit ui` for a local terminal UI grouped by extension type and severity.
+- Added `agent-audit scan --format html --output risk-report.html` for a static local dashboard report.
+- Added categorized inventory/finding cards to make large skills scans easier to review.
+- Grouped category-card findings by severity so large categories can be reviewed by risk level.
+- Added browser-only severity, rule, inventory type, location, and text filters to HTML reports.
+- Added an English / Traditional Chinese UI toggle to HTML reports.
+- Documented the HTML report privacy model and local-only usage.
+
+## 0.1.1
+
+- Added `--min-severity medium|high|critical` to focus reports on higher-priority findings.
+- Added `--no-home` plus `--include` and `--exclude` path filters for narrower local scans.
+- Added recommended next actions to terminal, Markdown, and JSON reports.
+- Updated Vitest dev dependency to remove the low-severity esbuild audit finding.
+
+## 0.1.0
+
+- Initial local-first CLI skeleton.
+- Added read-only scan, Markdown/JSON/terminal reports, `explain`, and `doctor`.
+- Added deterministic risk rules for MCP, plugins, hooks, secret references, duplicate skills, and oversized skills.
+- Added privacy, security, rule, example, and CI documentation.

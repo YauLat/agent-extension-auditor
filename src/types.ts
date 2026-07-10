@@ -1,0 +1,117 @@
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+
+export type InventoryType =
+  | "skill"
+  | "plugin"
+  | "mcpServer"
+  | "hook"
+  | "config"
+  | "package";
+
+export interface RuleDefinition {
+  id: string;
+  severity: Severity;
+  title: string;
+  what_it_detects: string;
+  why_it_matters: string;
+  false_positive_notes: string;
+  recommended_action: string;
+}
+
+export interface FindingLocation {
+  path: string;
+  displayPath: string;
+  line?: number;
+  keyPath?: string;
+}
+
+export type EvidenceKind = "documented" | "configured" | "metadata";
+export type EvidenceConfidence = "medium" | "high";
+
+export interface FindingEvidence {
+  kind: EvidenceKind;
+  confidence: EvidenceConfidence;
+  active: "unknown";
+}
+
+export interface RemediationDescriptor {
+  mode: "review" | "guided";
+  title: string;
+  summary: string;
+  actionId?: "skill.add-source";
+  requiresInput?: ["source"];
+}
+
+export interface Finding {
+  ruleId: string;
+  severity: Severity;
+  title: string;
+  message: string;
+  location: FindingLocation;
+  itemId?: string;
+  recommendation: string;
+  evidence: FindingEvidence;
+  remediation: RemediationDescriptor;
+}
+
+export interface InventoryItem {
+  id: string;
+  type: InventoryType;
+  name: string;
+  path: string;
+  displayPath: string;
+  source?: string;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface ScannedLocation {
+  path: string;
+  displayPath: string;
+  kind: string;
+  exists: boolean;
+  reason: string;
+}
+
+export interface ScanSummary {
+  inventory: {
+    skills: number;
+    plugins: number;
+    mcpServers: number;
+    hooks: number;
+    configs: number;
+    packages: number;
+  };
+  findings: Record<Severity, number>;
+}
+
+export interface ScanReport {
+  tool: "agent-audit";
+  version: string;
+  generatedAt: string;
+  privacy: {
+    telemetry: false;
+    uploaded: false;
+  };
+  scannedLocations: ScannedLocation[];
+  inventory: InventoryItem[];
+  findings: Finding[];
+  summary: ScanSummary;
+  recommendedActions: string[];
+}
+
+export interface ScanOptions {
+  cwd?: string;
+  home?: string;
+  generatedAt?: Date;
+  maxFileBytes?: number;
+  maxDepth?: number;
+  includeHome?: boolean;
+  includePaths?: string[];
+  excludePaths?: string[];
+}
+
+export interface TargetLocation {
+  path: string;
+  kind: string;
+  reason: string;
+}

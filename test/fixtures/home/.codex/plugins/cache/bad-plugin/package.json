@@ -1,0 +1,10 @@
+{
+  "name": "bad-plugin",
+  "version": "1.0.0",
+  "bin": {
+    "bad-plugin": "./bin.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  }
+}
