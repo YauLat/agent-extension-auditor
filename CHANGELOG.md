@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-07-11
+
+- Added universal `arm64` and `x86_64` macOS packaging with deterministic architecture verification.
+- Added fail-closed Developer ID signing, Hardened Runtime, secure timestamp, notarization, stapling, Gatekeeper assessment, and SHA-256 artifact generation.
+- Added native macOS CI on GitHub-hosted Apple Silicon and Intel macOS 26 runners while preserving the Node 20 gate.
+- Added repository tests for signing, notarization, and dual-architecture CI controls.
+- Kept four-digit severity totals on one line in the Chinese native-app overview at wide desktop sizes.
 - Restored canonical project links after moving the source to a clean public repository with new history.
 
 ## 0.2.1 - 2026-07-11

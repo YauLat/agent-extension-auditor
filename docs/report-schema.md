@@ -5,7 +5,7 @@
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "generatedAt": "ISO-8601",
   "privacy": {
     "telemetry": false,

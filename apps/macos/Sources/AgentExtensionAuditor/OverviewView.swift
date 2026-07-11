@@ -90,6 +90,9 @@ private struct SeverityMetricCard: View {
                 Text(count.formatted())
                     .font(.system(size: 25, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             Spacer(minLength: 0)
         }

@@ -118,7 +118,7 @@ final class AgentExtensionAuditorTests: XCTestCase {
         """
         {
           "tool": "agent-audit",
-          "version": "0.2.1",
+          "version": "0.2.2",
           "generatedAt": "2026-07-10T10:00:00.000Z",
           "privacy": { "telemetry": false, "uploaded": false },
           "scannedLocations": [

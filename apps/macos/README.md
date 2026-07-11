@@ -4,7 +4,9 @@
 
 ## Distribution
 
-The macOS app is open-source and built locally from this repository. It is not distributed through the Mac App Store, and the repository does not attach an unnotarized app binary to releases. The local packaging script uses an ad-hoc signature for development and personal use.
+The macOS app is open-source and is not distributed through the Mac App Store. Local builds use an ad-hoc signature by default. Starting with `v0.2.2`, the release path accepts only a `Developer ID Application` identity, enables Hardened Runtime and a secure timestamp, submits the universal app to Apple's notary service, staples the accepted ticket, and emits a ZIP plus SHA-256 checksum.
+
+The repository never stores a signing identity, certificate, private key, Apple credential, notarization profile, or npm token. The official release process reads an existing signing identity and notarization profile from the local Keychain and refuses to attach an ad-hoc, Apple Development-signed, or unnotarized binary.
 
 ## Requirements
 
@@ -22,7 +24,30 @@ apps/macos/scripts/package-app.sh
 open "apps/macos/build/release/Agent Extension Auditor.app"
 ```
 
-The packaging script builds the TypeScript scanner and Swift app, copies `dist` into the app bundle, and applies a local ad-hoc signature. It does not download dependencies or contact a service.
+The packaging script builds the TypeScript scanner and both macOS architectures, creates a universal app, copies `dist` into the app bundle, and applies a local ad-hoc signature. It does not download dependencies or contact a service.
+
+To build only the current runner architecture in CI, set `MACOS_BUILD_ARCHS` to `arm64` or `x86_64`. Its default is `universal`.
+
+## Developer ID And Notarization
+
+This operation contacts Apple and requires an existing Developer ID Application identity plus a `notarytool` Keychain profile. Placeholder values below are names, not secrets:
+
+```bash
+MACOS_SIGN_IDENTITY="Developer ID Application: <certificate name>" \
+NOTARY_KEYCHAIN_PROFILE="<keychain profile name>" \
+apps/macos/scripts/notarize-app.sh
+```
+
+The script fails before building if the signing identity is not a Developer ID Application identity. After Apple accepts the submission, it staples and validates the ticket, runs Gatekeeper assessment, recreates the distributable ZIP, and writes a `.sha256` file under `apps/macos/build/artifacts/`.
+
+Verify a downloaded release without bypassing Gatekeeper:
+
+```bash
+shasum -a 256 -c "Agent-Extension-Auditor-0.2.2-macos-universal.zip.sha256"
+ditto -x -k "Agent-Extension-Auditor-0.2.2-macos-universal.zip" .
+xcrun stapler validate -v "Agent Extension Auditor.app"
+spctl --assess --type execute --verbose=4 "Agent Extension Auditor.app"
+```
 
 ## Runtime
 

@@ -49,11 +49,13 @@ npm run build
 node dist/cli.js scan
 ```
 
-## Build The macOS App From Source
+## macOS App
 
-The macOS app is an optional native SwiftUI interface. It is not distributed through the Mac App Store. This repository provides the source and a local packaging script; the generated app uses a local ad-hoc signature and stays on your Mac.
+The macOS app is an optional native SwiftUI interface. It is not distributed through the Mac App Store. Starting with `v0.2.2`, tagged GitHub releases can include a universal, Developer ID-signed, notarized ZIP and its SHA-256 checksum. Node.js 20 or newer must still be installed on the Mac because the app bundles the scanner, not a Node runtime.
 
 Requirements: macOS 14 or newer, Xcode 26, and Node.js 20 or newer.
+
+Local source builds remain ad-hoc signed and never use a release certificate unless an explicit `MACOS_SIGN_IDENTITY` is supplied:
 
 ```bash
 swift test --package-path apps/macos
@@ -61,7 +63,7 @@ apps/macos/scripts/package-app.sh
 open "apps/macos/build/release/Agent Extension Auditor.app"
 ```
 
-See [apps/macos/README.md](./apps/macos/README.md) for runtime and repair details.
+Release packaging fails closed unless a `Developer ID Application` identity and an existing notarization Keychain profile are supplied. See [apps/macos/README.md](./apps/macos/README.md) for build, signature, checksum, runtime, and repair details.
 
 ## Quick Start
 
@@ -183,7 +185,7 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "privacy": {
     "telemetry": false,
     "uploaded": false
