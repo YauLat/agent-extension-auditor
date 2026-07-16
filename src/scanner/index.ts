@@ -20,6 +20,7 @@ import {
   hasSourceMetadata,
   looksLikeTextFile,
   parseFrontmatterName,
+  sanitizePublicSource,
   sanitizeJsonError
 } from "../util/text.js";
 import { exists, findFiles, readSmallFile } from "./files.js";
@@ -212,13 +213,14 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
   }
 
   const name = stringValue(parsed.name) ?? path.basename(path.dirname(packageFile));
+  const source = sanitizePublicSource(stringValue(parsed.repository) ?? stringValue(parsed.homepage));
   const item: InventoryItem = {
     id: stableId("package", packageFile),
     type: "package",
     name,
     path: packageFile,
     displayPath: toDisplayPath(packageFile, context.home),
-    source: stringValue(parsed.repository) ?? stringValue(parsed.homepage),
+    source,
     metadata: {
       version: stringValue(parsed.version) ?? "unknown"
     }
@@ -231,7 +233,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     name,
     path: path.dirname(packageFile),
     displayPath: toDisplayPath(path.dirname(packageFile), context.home),
-    source: item.source,
+    source,
     metadata: {
       package: name
     }
@@ -691,7 +693,7 @@ function isSameOrInside(candidatePath: string, parentPath: string): boolean {
 
 function inferSource(content: string): string | undefined {
   const match = content.match(/^(?:origin|source|repository|repo|url|homepage):\s*(\S+)/im);
-  return match?.[1];
+  return sanitizePublicSource(match?.[1]);
 }
 
 function containsShellCommand(value: unknown): boolean {

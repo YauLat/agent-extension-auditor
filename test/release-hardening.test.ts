@@ -23,6 +23,16 @@ describe("macOS release hardening", () => {
     expect(script).toContain("codesign --verify --deep --strict");
   });
 
+  it("removes build-machine paths and fails closed on private artifact data", () => {
+    const script = fs.readFileSync("apps/macos/scripts/package-app.sh", "utf8");
+
+    expect(script).toContain("xcrun strip -S");
+    expect(script).toContain("reject_private_artifact_data");
+    expect(script).toContain("/Users/");
+    expect(script).toContain("/home/");
+    expect(script).toContain("[A-Z0-9._%+-]+@[A-Z0-9.-]+");
+  });
+
   it("requires explicit Keychain inputs before notarization", () => {
     const script = fs.readFileSync("apps/macos/scripts/notarize-app.sh", "utf8");
 
@@ -42,6 +52,15 @@ describe("macOS release hardening", () => {
     expect(workflow).toContain("architecture: arm64");
     expect(workflow).toContain("architecture: x86_64");
     expect(workflow).toContain("swift test --package-path apps/macos");
+  });
+
+  it("pins third-party actions and keeps workflow permissions read-only", () => {
+    const workflow = fs.readFileSync(".github/workflows/ci.yml", "utf8");
+
+    expect(workflow).toContain("permissions:\n  contents: read");
+    expect(workflow).toContain("actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5");
+    expect(workflow).toContain("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
+    expect(workflow).not.toMatch(/actions\/(?:checkout|setup-node)@v\d/);
   });
 
   it("keeps four-digit severity counts on one line", () => {

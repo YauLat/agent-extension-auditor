@@ -27,9 +27,22 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
-for command_name in node npm swift lipo codesign ditto iconutil sips plutil; do
+for command_name in node npm swift lipo codesign ditto iconutil sips plutil xcrun grep; do
   require_command "$command_name"
 done
+
+reject_private_artifact_data() {
+  local artifact_root=$1
+  local private_data_pattern='/Users/[^/[:space:][:cntrl:]]+|/home/[^/[:space:][:cntrl:]]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}'
+  local scan_status
+
+  if LC_ALL=C grep -a -R -E -i -q "$private_data_pattern" "$artifact_root"; then
+    fail "packaged app contains a private email address or absolute user-home path"
+  else
+    scan_status=$?
+    [[ "$scan_status" -eq 1 ]] || fail "packaged app privacy scan could not inspect all artifacts"
+  fi
+}
 
 case "$BUILD_ARCHS" in
   universal|arm64|x86_64) ;;
@@ -96,6 +109,8 @@ else
   install -m 755 "$X86_64_BINARY" "$MACOS_DIR/AgentExtensionAuditor"
 fi
 
+xcrun strip -S "$MACOS_DIR/AgentExtensionAuditor"
+
 BUNDLE_ARCHS=$(lipo -archs "$MACOS_DIR/AgentExtensionAuditor")
 for required_architecture in ${BUILD_ARCHS/universal/arm64 x86_64}; do
   case " $BUNDLE_ARCHS " in
@@ -123,6 +138,8 @@ sips -z 512 512 "$ICON_SOURCE" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/nu
 sips -z 512 512 "$ICON_SOURCE" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
 sips -z 1024 1024 "$ICON_SOURCE" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
+
+reject_private_artifact_data "$APP_BUNDLE"
 
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
   codesign --force --sign - "$APP_BUNDLE"
