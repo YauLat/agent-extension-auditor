@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
+import { createHash } from "node:crypto";
+import { parse as parseToml } from "smol-toml";
 import path from "node:path";
 import type {
   FindingEvidence,
@@ -20,10 +22,10 @@ import {
   hasSourceMetadata,
   looksLikeTextFile,
   parseFrontmatterName,
-  sanitizePublicSource,
-  sanitizeJsonError
+  sanitizePublicSource
 } from "../util/text.js";
-import { exists, findFiles, readSmallFile } from "./files.js";
+import { exists } from "./files.js";
+import { ScanReader, isInside, type DiscoveredFile } from "./reader.js";
 import { getDefaultTargets } from "./targets.js";
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
@@ -41,39 +43,55 @@ const writeDeletePattern =
 const autoUpdatePattern = /\b(?:auto[-_]?update|self[-_]?update|updateInterval|npm\s+update|pnpm\s+update|yarn\s+upgrade)\b/i;
 
 export async function scanAgentExtensions(options: ScanOptions = {}): Promise<ScanReport> {
-  const cwd = path.resolve(options.cwd ?? process.cwd());
-  const home = path.resolve(options.home ?? os.homedir());
+  const cwd = await fs.realpath(path.resolve(options.cwd ?? process.cwd())).catch(() => path.resolve(options.cwd ?? process.cwd()));
+  const home = await fs.realpath(path.resolve(options.home ?? os.homedir())).catch(() => path.resolve(options.home ?? os.homedir()));
   const generatedAt = options.generatedAt ?? new Date();
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+  if (!(await fs.stat(cwd).catch(() => undefined))?.isDirectory()) {
+    throw new Error("Workspace root is not an accessible directory.");
+  }
+  if ((options.includeHome ?? true) && !(await fs.stat(home).catch(() => undefined))?.isDirectory()) {
+    throw new Error("Home root is not an accessible directory.");
+  }
   const pathFilter = buildPathFilter(options, cwd, home);
-  const targets = getDefaultTargets(cwd, home, { includeHome: options.includeHome }).filter((target) =>
-    targetMatchesPathFilter(target.path, pathFilter)
-  );
+  if (!Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1 || maxFileBytes > 64 * 1024 * 1024
+    || !Number.isSafeInteger(maxDepth) || maxDepth < 0 || maxDepth > 100) {
+    throw new Error("Invalid scan limits: bytes must be 1..67108864; depth must be 0..100.");
+  }
+  const allTargets = getDefaultTargets(cwd, home, { includeHome: options.includeHome });
+  const targets = allTargets.filter((target) => targetMatchesPathFilter(target.path, pathFilter));
+  const reader = new ScanReader(targets, home, {
+    includeHome: options.includeHome ?? true,
+    ...pathFilter, maxFileBytes, maxDepth, defaultExcludedDirectories: ["node_modules", ".git", "dist"]
+  });
+  for (const target of allTargets) {
+    if (!targets.includes(target)) reader.diagnostic("user_excluded", target.path, "target");
+  }
   const scannedLocations = await buildScannedLocations(targets, home);
   const context: ScanContext = {
-    cwd,
-    home,
-    maxFileBytes,
-    maxDepth,
-    pathFilter,
-    inventory: [],
-    findings: []
+    cwd, home, maxFileBytes, maxDepth, pathFilter, reader,
+    inventory: [], findings: [], processed: new Set()
   };
-
+  // Discover all aliases before analysis so canonical assets retain every agent association.
+  const discovered = new Map<TargetLocation, DiscoveredFile[]>();
+  for (const target of targets) discovered.set(target, await reader.discover(target));
   for (const target of targets) {
-    if (!(await exists(target.path))) {
-      continue;
-    }
+    const files = discovered.get(target)!;
     if (target.kind === "skill-root") {
-      await scanSkillRoot(target.path, context);
+      await scanSkillRoot(files, context);
     } else if (target.kind === "plugin-root") {
-      await scanPluginRoot(target.path, context);
-    } else if (target.kind === "mcp-config" || target.kind === "agent-config") {
-      await scanJsonConfig(target.path, context);
-      await scanTextFile(target.path, context);
-    } else if (target.kind === "workspace-config") {
-      await scanTextFile(target.path, context);
+      await scanPluginRoot(files, context);
+    } else {
+      for (const file of files) {
+        if (context.processed.has(file.path)) continue;
+        context.processed.add(file.path);
+        if (["mcp-config", "agent-config", "toml-config"].includes(target.kind)) {
+          await scanConfig(file.path, context, target.kind === "toml-config");
+        } else {
+          await scanTextFile(file.path, context);
+        }
+      }
     }
   }
 
@@ -82,8 +100,11 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const findings = sortFindings(context.findings);
   const inventory = context.inventory.sort((a, b) => a.displayPath.localeCompare(b.displayPath));
   const summary = buildSummary(inventory, findings);
+  const coverage = reader.coverage();
 
   return {
+    schemaVersion: 2,
+    coverage,
     tool: "agent-audit",
     version: VERSION,
     generatedAt: generatedAt.toISOString(),
@@ -95,7 +116,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
     inventory,
     findings,
     summary,
-    recommendedActions: buildRecommendedActions(findings, summary)
+    recommendedActions: coverageActions(buildRecommendedActions(findings, summary), coverage.status)
   };
 }
 
@@ -108,7 +129,8 @@ export function filterReportByMinSeverity(report: ScanReport, minSeverity?: Seve
     ...report,
     findings,
     summary,
-    recommendedActions: buildRecommendedActions(findings, summary)
+    filters: { minSeverity, hiddenFindings: report.findings.length - findings.length + (report.filters?.hiddenFindings ?? 0) },
+    recommendedActions: coverageActions(buildRecommendedActions(findings, summary), report.coverage?.status)
   };
 }
 
@@ -120,6 +142,8 @@ interface ScanContext {
   pathFilter: ScanPathFilter;
   inventory: InventoryItem[];
   findings: Finding[];
+  reader: ScanReader;
+  processed: Set<string>;
 }
 
 interface ScanPathFilter {
@@ -141,53 +165,67 @@ async function buildScannedLocations(targets: TargetLocation[], home: string): P
   return locations;
 }
 
-async function scanSkillRoot(root: string, context: ScanContext): Promise<void> {
-  const skillFiles = (await findFiles(root, (filePath) => path.basename(filePath) === "SKILL.md", context.maxDepth)).filter(
-    (filePath) => pathMatchesPathFilter(filePath, context.pathFilter)
-  );
-  for (const skillFile of skillFiles) {
-    const content = await readSmallFile(skillFile, context.maxFileBytes);
-    if (content === undefined) {
-      continue;
-    }
-
-    const name = parseFrontmatterName(content) ?? path.basename(path.dirname(skillFile));
+async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Promise<void> {
+  const skills = files.filter((file) => [...file.aliases].some((alias) => path.basename(alias) === "SKILL.md"));
+  // The closest SKILL.md owns nested files; no double-reporting for nested skills.
+  const owner = (filePath: string) => skills.filter((skill) => isInside(filePath, path.dirname(skill.path)))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  for (const file of skills) {
+    const skillFile = file.path;
+    if (context.processed.has(skillFile)) continue;
+    context.processed.add(skillFile);
+    const content = await context.reader.read(skillFile);
+    if (content === undefined) continue;
     const item: InventoryItem = {
-      id: stableId("skill", skillFile),
-      type: "skill",
-      name,
-      path: skillFile,
-      displayPath: toDisplayPath(skillFile, context.home),
+      id: stableId("skill", skillFile), type: "skill",
+      name: parseFrontmatterName(content) ?? path.basename(path.dirname(skillFile)),
+      path: skillFile, displayPath: toDisplayPath(skillFile, context.home),
       source: inferSource(content),
-      metadata: {
-        bytes: Buffer.byteLength(content, "utf8")
-      }
+      aliases: [...file.aliases].map((alias) => toDisplayPath(alias, context.home)).sort(),
+      agents: [...file.agents].sort(),
+      metadata: { bytes: Buffer.byteLength(content, "utf8") },
+      contentHash: hashAssetParts([["SKILL.md", content, context.reader.mode(skillFile) ?? 0]])
     };
     context.inventory.push(item);
-
-    if (!hasSourceMetadata(content)) {
-      addFinding(context, "UNKNOWN_SOURCE", skillFile, {
-        itemId: item.id,
-        message: "Skill does not include obvious source, origin, repository, or URL metadata."
-      });
-    }
-    if (Buffer.byteLength(content, "utf8") > OVERSIZED_SKILL_BYTES) {
-      addFinding(context, "OVERSIZED_SKILL_CONTEXT", skillFile, {
-        itemId: item.id,
-        message: `Skill file is larger than ${OVERSIZED_SKILL_BYTES} bytes.`
-      });
-    }
-
+    if (!hasSourceMetadata(content)) addFinding(context, "UNKNOWN_SOURCE", skillFile, {
+      itemId: item.id, message: "Skill does not include obvious source, origin, repository, or URL metadata."
+    });
+    if (Buffer.byteLength(content, "utf8") > OVERSIZED_SKILL_BYTES) addFinding(context, "OVERSIZED_SKILL_CONTEXT", skillFile, {
+      itemId: item.id, message: `Skill file is larger than ${OVERSIZED_SKILL_BYTES} bytes.`
+    });
     detectTextPatterns(content, skillFile, context, item.id);
+    for (const bundled of files.filter((candidate) => candidate.path !== skillFile && owner(candidate.path) === file)) {
+      if (context.processed.has(bundled.path)) continue;
+      context.processed.add(bundled.path);
+      if (!looksLikeTextFile(bundled.path)) {
+        context.reader.diagnostic("unsupported_type", bundled.path);
+        continue;
+      }
+      const text = await context.reader.read(bundled.path);
+      if (text === undefined) continue;
+      item.contentHash = hashAssetParts([
+        ["previous", item.contentHash ?? "", 0],
+        [path.relative(path.dirname(skillFile), bundled.path), text, context.reader.mode(bundled.path) ?? 0]
+      ]);
+      const evidence: FindingEvidence = /\.(md|mdx|txt)$/i.test(bundled.path)
+        ? documentedEvidence : { kind: "code", confidence: "medium", active: "unknown" };
+      detectTextPatterns(text, bundled.path, context, item.id, evidence, false);
+      if (path.basename(bundled.path) === "package.json") {
+        try {
+          const parsed: unknown = JSON.parse(text);
+          if (isRecord(parsed)) inspectPackageBehavior(parsed, bundled.path, context, item.id);
+          else context.reader.diagnostic("invalid_config", bundled.path);
+        } catch { context.reader.diagnostic("parse_failed", bundled.path); }
+      }
+    }
   }
 }
 
-async function scanPluginRoot(root: string, context: ScanContext): Promise<void> {
-  const packageFiles = (
-    await findFiles(root, (filePath) => path.basename(filePath) === "package.json", context.maxDepth)
-  ).filter((filePath) => pathMatchesPathFilter(filePath, context.pathFilter));
-  for (const packageFile of packageFiles) {
-    await scanPackageJson(packageFile, context);
+async function scanPluginRoot(files: DiscoveredFile[], context: ScanContext): Promise<void> {
+  for (const file of files.filter((entry) => [...entry.aliases].some((alias) => path.basename(alias) === "package.json"))) {
+    if (context.processed.has(file.path)) continue;
+    context.processed.add(file.path);
+    await scanPackageJson(file.path, context);
   }
 }
 
@@ -195,7 +233,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
   if (!pathMatchesPathFilter(packageFile, context.pathFilter)) {
     return;
   }
-  const content = await readSmallFile(packageFile, context.maxFileBytes);
+  const content = await context.reader.read(packageFile);
   if (content === undefined) {
     return;
   }
@@ -204,11 +242,12 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
   try {
     parsed = JSON.parse(content);
   } catch {
-    detectTextPatterns(content, packageFile, context);
+    context.reader.diagnostic("parse_failed", packageFile);
     return;
   }
 
   if (!isRecord(parsed)) {
+    context.reader.diagnostic("invalid_config", packageFile);
     return;
   }
 
@@ -221,6 +260,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     path: packageFile,
     displayPath: toDisplayPath(packageFile, context.home),
     source,
+    contentHash: hashText(content, context.reader.mode(packageFile)),
     metadata: {
       version: stringValue(parsed.version) ?? "unknown"
     }
@@ -234,17 +274,23 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     path: path.dirname(packageFile),
     displayPath: toDisplayPath(path.dirname(packageFile), context.home),
     source,
+    contentHash: item.contentHash,
     metadata: {
       package: name
     }
   };
   context.inventory.push(pluginItem);
 
+  inspectPackageBehavior(parsed, packageFile, context, item.id);
+  detectTextPatterns(content, packageFile, context, item.id, configuredEvidence, false);
+}
+
+function inspectPackageBehavior(parsed: Record<string, unknown>, packageFile: string, context: ScanContext, itemId: string): void {
   const scripts = isRecord(parsed.scripts) ? parsed.scripts : {};
   for (const scriptName of ["preinstall", "install", "postinstall", "prepare"]) {
     if (typeof scripts[scriptName] === "string") {
       addFinding(context, "PLUGIN_POSTINSTALL", packageFile, {
-        itemId: item.id,
+        itemId,
         keyPath: `scripts.${scriptName}`,
         message: `Package defines lifecycle script "${scriptName}".`
       });
@@ -253,51 +299,38 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
 
   if (parsed.bin !== undefined) {
     addFinding(context, "PLUGIN_BIN_EXECUTABLE", packageFile, {
-      itemId: item.id,
+      itemId,
       keyPath: "bin",
       message: "Package exposes one or more CLI executables."
     });
   }
 
-  detectTextPatterns(content, packageFile, context, item.id);
 }
 
-async function scanJsonConfig(filePath: string, context: ScanContext): Promise<void> {
-  if (!pathMatchesPathFilter(filePath, context.pathFilter)) {
-    return;
-  }
-  const content = await readSmallFile(filePath, context.maxFileBytes);
-  if (content === undefined) {
-    return;
-  }
-
+async function scanConfig(filePath: string, context: ScanContext, toml = false): Promise<void> {
+  const content = await context.reader.read(filePath);
+  if (content === undefined) return;
+  const item: InventoryItem = {
+    id: stableId("config", filePath), type: "config", name: path.basename(filePath),
+    path: filePath, displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(content, context.reader.mode(filePath))
+  };
+  context.inventory.push(item);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(content);
-  } catch (error) {
-    context.inventory.push({
-      id: stableId("config", filePath),
-      type: "config",
-      name: path.basename(filePath),
-      path: filePath,
-      displayPath: toDisplayPath(filePath, context.home),
-      metadata: {
-        parseError: sanitizeJsonError(error)
-      }
-    });
+    parsed = toml ? parseToml(content, { maxDepth: 64 }) : JSON.parse(content);
+  } catch {
+    item.metadata = { parseError: toml ? "Invalid TOML" : "Invalid JSON" };
+    context.reader.diagnostic("parse_failed", filePath);
     return;
   }
-
-  context.inventory.push({
-    id: stableId("config", filePath),
-    type: "config",
-    name: path.basename(filePath),
-    path: filePath,
-    displayPath: toDisplayPath(filePath, context.home)
-  });
-
+  if (!isRecord(parsed)) {
+    context.reader.diagnostic("invalid_config", filePath);
+    return;
+  }
   findMcpServers(parsed, filePath, context);
   detectJsonHooks(parsed, filePath, context);
+  detectTextPatterns(content, filePath, context, item.id, configuredEvidence, false);
 }
 
 async function scanTextFile(filePath: string, context: ScanContext): Promise<void> {
@@ -307,16 +340,23 @@ async function scanTextFile(filePath: string, context: ScanContext): Promise<voi
   if (!looksLikeTextFile(filePath)) {
     return;
   }
-  const content = await readSmallFile(filePath, context.maxFileBytes);
+  const content = await context.reader.read(filePath);
   if (content === undefined) {
     return;
   }
-  detectTextPatterns(content, filePath, context);
+  const item: InventoryItem = {
+    id: stableId("config", filePath), type: "config", name: path.basename(filePath),
+    path: filePath, displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(content, context.reader.mode(filePath))
+  };
+  context.inventory.push(item);
+  detectTextPatterns(content, filePath, context, item.id);
 }
 
-function findMcpServers(value: unknown, filePath: string, context: ScanContext, keyPath = ""): void {
+function findMcpServers(value: unknown, filePath: string, context: ScanContext, keyPath = "", depth = 0): void {
+  if (depth > 64) { context.reader.diagnostic("structure_limit", filePath); return; }
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => findMcpServers(entry, filePath, context, `${keyPath}[${index}]`));
+    value.forEach((entry, index) => findMcpServers(entry, filePath, context, `${keyPath}[${index}]`, depth + 1));
     return;
   }
 
@@ -326,12 +366,12 @@ function findMcpServers(value: unknown, filePath: string, context: ScanContext, 
 
   for (const [key, entry] of Object.entries(value)) {
     const childPath = keyPath ? `${keyPath}.${key}` : key;
-    if (key === "mcpServers" && isRecord(entry)) {
+    if ((key === "mcpServers" || key === "mcp_servers") && isRecord(entry)) {
       for (const [serverName, serverConfig] of Object.entries(entry)) {
         inspectMcpServer(serverName, serverConfig, filePath, context, `${childPath}.${serverName}`);
       }
     } else {
-      findMcpServers(entry, filePath, context, childPath);
+      findMcpServers(entry, filePath, context, childPath, depth + 1);
     }
   }
 }
@@ -349,6 +389,7 @@ function inspectMcpServer(
     name: serverName,
     path: filePath,
     displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(JSON.stringify(serverConfig), context.reader.mode(filePath)),
     metadata: {
       keyPath
     }
@@ -389,35 +430,29 @@ function inspectMcpServer(
   detectRecordSecretReferences(serverConfig, filePath, context, item.id, keyPath);
 }
 
-function detectJsonHooks(value: unknown, filePath: string, context: ScanContext, keyPath = ""): void {
+function detectJsonHooks(value: unknown, filePath: string, context: ScanContext, keyPath = "", inHooks = false, depth = 0): void {
+  if (depth > 64) { context.reader.diagnostic("structure_limit", filePath); return; }
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => detectJsonHooks(entry, filePath, context, `${keyPath}[${index}]`));
+    value.forEach((entry, index) => detectJsonHooks(entry, filePath, context, `${keyPath}[${index}]`, inHooks, depth + 1));
     return;
   }
-
-  if (!isRecord(value)) {
-    return;
+  if (!isRecord(value)) return;
+  // Register command leaves once, not every enclosing hooks/matcher/event object.
+  if (inHooks && typeof value.command === "string" && value.command.trim() && (value.type === undefined || value.type === "command")) {
+    const commandPath = `${keyPath}.command`;
+    const item: InventoryItem = {
+      id: stableId("hook", filePath, commandPath), type: "hook", name: keyPath,
+      path: filePath, displayPath: toDisplayPath(filePath, context.home),
+      contentHash: hashText(value.command, context.reader.mode(filePath))
+    };
+    context.inventory.push(item);
+    addFinding(context, "HOOK_SHELL_COMMAND", filePath, {
+      itemId: item.id, keyPath: commandPath, message: "Hook configuration contains a command. Execution has not been observed."
+    });
   }
-
   for (const [key, entry] of Object.entries(value)) {
     const childPath = keyPath ? `${keyPath}.${key}` : key;
-    const keyLooksLikeHook = /hook|preToolUse|postToolUse|stop|notification/i.test(key);
-    if (keyLooksLikeHook && containsShellCommand(entry)) {
-      const item: InventoryItem = {
-        id: stableId("hook", filePath, childPath),
-        type: "hook",
-        name: childPath,
-        path: filePath,
-        displayPath: toDisplayPath(filePath, context.home)
-      };
-      context.inventory.push(item);
-      addFinding(context, "HOOK_SHELL_COMMAND", filePath, {
-        itemId: item.id,
-        keyPath: childPath,
-        message: "Hook-like configuration contains shell command behavior."
-      });
-    }
-    detectJsonHooks(entry, filePath, context, childPath);
+    detectJsonHooks(entry, filePath, context, childPath, inHooks || key === "hooks", depth + 1);
   }
 }
 
@@ -428,8 +463,17 @@ function detectRecordSecretReferences(
   itemId: string,
   keyPath: string
 ): void {
-  const text = JSON.stringify(value);
-  if (secretNamePattern.test(text) || envReferencePattern.test(text)) {
+  const containsReference = (entry: unknown, depth = 0): boolean => {
+    if (depth > 64) { context.reader.diagnostic("structure_limit", filePath); return false; }
+    if (typeof entry === "string") {
+      resetRegexes();
+      return secretNamePattern.test(entry) || envReferencePattern.test(entry);
+    }
+    if (Array.isArray(entry)) return entry.some((child) => containsReference(child, depth + 1));
+    if (isRecord(entry)) return Object.entries(entry).some(([key, child]) => containsReference(key, depth + 1) || containsReference(child, depth + 1));
+    return false;
+  };
+  if (containsReference(value)) {
     addFinding(context, "SECRET_PATTERN_REFERENCE", filePath, {
       itemId,
       keyPath,
@@ -439,47 +483,40 @@ function detectRecordSecretReferences(
   resetRegexes();
 }
 
-function detectTextPatterns(content: string, filePath: string, context: ScanContext, itemId?: string): void {
+function detectTextPatterns(content: string, filePath: string, context: ScanContext, itemId?: string,
+  evidence: FindingEvidence = documentedEvidence, detectHookMention = true): void {
   addRegexFinding(content, remoteScriptPattern, context, "REMOTE_SCRIPT_EXECUTION", filePath, {
     itemId,
     message: "File contains a remote script execution pattern.",
-    evidence: documentedEvidence
+    evidence
   });
   addRegexFinding(content, secretNamePattern, context, "SECRET_PATTERN_REFERENCE", filePath, {
     itemId,
     message: "File contains secret-like references. Secret values are not printed.",
-    evidence: documentedEvidence
+    evidence
   });
   addRegexFinding(content, outsideReadPattern, context, "WORKSPACE_OUTSIDE_READ", filePath, {
     itemId,
     message: "File references broad local reads outside the active workspace.",
-    evidence: documentedEvidence
+    evidence
   });
   addRegexFinding(content, writeDeletePattern, context, "WRITE_OR_DELETE_CAPABILITY", filePath, {
     itemId,
     message: "File contains write or delete capability markers.",
-    evidence: documentedEvidence
+    evidence
   });
   addRegexFinding(content, autoUpdatePattern, context, "AUTO_UPDATE_BEHAVIOR", filePath, {
     itemId,
     message: "File contains auto-update behavior markers.",
-    evidence: documentedEvidence
+    evidence
   });
-  const hookIndex = findNearbyHookShellIndex(content);
+  const hookIndex = detectHookMention ? findNearbyHookShellIndex(content) : undefined;
   if (hookIndex !== undefined) {
-    const item: InventoryItem = {
-      id: stableId("hook", filePath, String(hookIndex)),
-      type: "hook",
-      name: path.basename(filePath),
-      path: filePath,
-      displayPath: toDisplayPath(filePath, context.home)
-    };
-    context.inventory.push(item);
     addFinding(context, "HOOK_SHELL_COMMAND", filePath, {
-      itemId: item.id,
+      itemId,
       line: getLineNumber(content, hookIndex),
       message: "File mentions hook behavior with nearby shell command markers.",
-      evidence: documentedEvidence
+      evidence
     });
   }
   resetRegexes();
@@ -504,6 +541,8 @@ function addRegexFinding(
     evidence: details.evidence
   });
 }
+
+const configuredEvidence: FindingEvidence = { kind: "configured", confidence: "high", active: "unknown" };
 
 const documentedEvidence: FindingEvidence = {
   kind: "documented",
@@ -556,7 +595,10 @@ function addFinding(
   details: { itemId?: string; keyPath?: string; line?: number; message: string; evidence?: FindingEvidence }
 ): void {
   const rule = getRule(ruleId);
+  const id = stableId("finding", ruleId, filePath, details.keyPath ?? "", String(details.line ?? ""), details.itemId ?? "");
+  if (context.findings.some((finding) => finding.id === id)) return;
   context.findings.push({
+    id,
     ruleId: rule.id,
     severity: rule.severity,
     title: rule.title,
@@ -687,26 +729,12 @@ function pathMatchesPathFilter(filePath: string, filter: ScanPathFilter): boolea
 }
 
 function isSameOrInside(candidatePath: string, parentPath: string): boolean {
-  const relativePath = path.relative(parentPath, candidatePath);
-  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+  return isInside(candidatePath, parentPath);
 }
 
 function inferSource(content: string): string | undefined {
   const match = content.match(/^(?:origin|source|repository|repo|url|homepage):\s*(\S+)/im);
   return sanitizePublicSource(match?.[1]);
-}
-
-function containsShellCommand(value: unknown): boolean {
-  if (typeof value === "string") {
-    return shellCommandPattern.test(value);
-  }
-  if (Array.isArray(value)) {
-    return value.some((entry) => containsShellCommand(entry));
-  }
-  if (isRecord(value)) {
-    return Object.values(value).some((entry) => containsShellCommand(entry));
-  }
-  return false;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -726,4 +754,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function resetRegexes(): void {
   secretNamePattern.lastIndex = 0;
   envReferencePattern.lastIndex = 0;
+}
+
+function hashText(content: string, mode = 0): string {
+  return hashAssetParts([["content", content, mode]]);
+}
+
+function hashAssetParts(parts: Array<[string, string, number]>): string {
+  const hash = createHash("sha256");
+  for (const [name, content, mode] of parts.sort(([a], [b]) => a.localeCompare(b))) {
+    hash.update(name.length.toString()).update(":").update(name).update("\0");
+    hash.update((mode & 0o777).toString(8)).update("\0");
+    hash.update(content.length.toString()).update(":").update(content).update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function coverageActions(actions: string[], status?: string): string[] {
+  return status && status !== "complete"
+    ? ["Scan incomplete: inspect coverage diagnostics before interpreting finding counts.", ...actions]
+    : actions;
 }

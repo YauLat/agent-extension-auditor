@@ -263,6 +263,7 @@ struct FindingDetailView: View {
         let kind: String
         switch evidence.kind {
         case .documented: kind = text(.documentedBehavior, language: store.language)
+        case .code: kind = store.language == .zhHant ? "程式包含此模式" : "Pattern present in code"
         case .configured: kind = text(.configuredBehavior, language: store.language)
         case .metadata: kind = text(.metadataEvidence, language: store.language)
         }

@@ -184,6 +184,12 @@ private struct InventoryDetailView: View {
                 if let source = item.source, !source.isEmpty {
                     DetailField(title: text(.source, language: store.language), value: source)
                 }
+                if let aliases = item.aliases, aliases.count > 1 {
+                    DetailField(title: store.language == .zhHant ? "安裝位置／別名" : "Install locations / aliases", value: aliases.joined(separator: "\n"), monospaced: true)
+                }
+                if let agents = item.agents, !agents.isEmpty {
+                    DetailField(title: "Agents", value: agents.joined(separator: ", "))
+                }
 
                 DetailField(
                     title: text(.location, language: store.language),

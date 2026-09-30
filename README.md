@@ -32,6 +32,8 @@ It is not an antivirus engine and does not claim an extension is safe or malicio
 - Severity filtering with `critical`, `high`, `medium`, `low`, and `info`.
 - Read-only scanning plus an explicit guided repair for adding user-supplied source metadata to `SKILL.md`.
 - Repair preview, confirmation, content-hash protection, private backup, rescan, and guarded rollback.
+- Scan coverage status and safe diagnostics for unreadable, oversized, excluded, unsupported, or invalid files.
+- Canonical skill aliases, bundled script inspection, and Claude/Codex settings support.
 - Privacy-first defaults: no telemetry, no cloud upload, no account, no secret value printing.
 
 ## Install The CLI
@@ -92,6 +94,9 @@ agent-audit ui
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
 agent-audit repair plan --action skill.add-source --path ./SKILL.md --source https://github.com/owner/repository
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
 ```
 
 Useful scan filters:
@@ -112,6 +117,19 @@ agent-audit repair rollback --backup <backup-id> --yes
 ```
 
 Planning is read-only. Apply and rollback require explicit confirmation. The engine rejects symlinks and stale previews, creates a private local backup, preserves file mode, and will not roll back over newer edits. Shell commands, hooks, credentials, network endpoints, package scripts, and write/delete findings remain manual-review only.
+
+## Manual Baseline Review
+
+Use a local baseline to review extension changes between scans. Keep the same scan scope for every command.
+
+```bash
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
+agent-audit baseline delete --yes
+```
+
+The baseline stores content/permission hashes and sanitized finding signatures, not source text, raw commands, credentials, full configuration, or absolute paths. It is written as a private `0600` file and rejects symbolic links and multiply-linked files. On load, derived identity, review, and finding hashes must remain internally consistent; this detects corruption or casual edits but is not a cryptographic signature against a malicious writer. No-follow reads and inode/content guards prevent `accept` or `delete` from silently replacing a concurrent update. The selected baseline file is excluded from the scan so it cannot create its own change event. `accept` and `delete` require `--yes`. A partial or failed scan can show new observations, but it cannot replace the last complete baseline or claim that earlier risks disappeared. If several same-type, same-name assets all change, the diff is partial and leaves them unresolved instead of guessing pairings or reporting false removals. Report schema, ruleset, or scope mismatches are marked incompatible instead of being silently compared.
 
 ## Review Interfaces
 
@@ -148,6 +166,12 @@ Report formats:
 - Workspace agent files such as `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `USER.md`, and `MEMORY.md`
 - Workspace `.agents/skills`
 - npm-style plugin packages with `package.json`
+
+The reliability changes on this branch are source-only and are not yet on npm or a signed Mac release. See [the coverage contract](./docs/scan-coverage.md) for exact roots, supported formats, limits, and exit codes.
+
+Additional declared locations include user `~/.agents/skills`, Claude user/project `settings.json`, project `.claude/settings.local.json` and `.claude/skills`, and user/project `.codex/config.toml`. Skill package text files are inspected without executing scripts. Symbolic links are followed only within selected declared roots, and identical canonical skills are counted once.
+
+`scan` and `ui` now return **3 for partial scans** and **4 when an incomplete scope has no readable files**. A report is still produced. Use `--allow-incomplete` only if an existing integration needs legacy exit-0 behavior; the report's coverage status remains unchanged. Findings alone do not change exit codes.
 
 ## What It Detects
 

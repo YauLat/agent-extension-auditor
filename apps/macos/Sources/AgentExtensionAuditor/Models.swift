@@ -40,6 +40,7 @@ struct FindingLocation: Codable, Equatable {
 
 enum EvidenceKind: String, Codable, Equatable {
     case documented
+    case code
     case configured
     case metadata
 }
@@ -120,6 +121,9 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     let path: String
     let displayPath: String
     let source: String?
+    var contentHash: String? = nil
+    var aliases: [String]? = nil
+    var agents: [String]? = nil
 }
 
 struct ScannedLocation: Codable, Identifiable, Equatable {
@@ -198,6 +202,34 @@ struct ScanReport: Codable, Equatable {
     let findings: [Finding]
     let summary: ScanSummary
     let recommendedActions: [String]
+    var schemaVersion: Int? = nil
+    var coverage: ScanCoverage? = nil
+}
+
+struct ScanDiagnostic: Codable, Equatable, Identifiable {
+    let code: String
+    let displayPath: String
+    let message: String
+    let affectsCompleteness: Bool
+    var id: String { "\(code)\u{1F}\(displayPath)" }
+}
+
+struct ScanScope: Codable, Equatable {
+    let includeHome: Bool
+    let includePaths: [String]
+    let excludePaths: [String]
+    let defaultExcludedDirectories: [String]
+    let maxFileBytes: Int
+    let maxDepth: Int
+}
+
+struct ScanCoverage: Codable, Equatable {
+    let status: String
+    let filesRead: Int
+    let filesSkipped: Int
+    let directoriesSkipped: Int
+    let diagnostics: [ScanDiagnostic]
+    let scope: ScanScope
 }
 
 enum SidebarSection: Hashable, Identifiable {
