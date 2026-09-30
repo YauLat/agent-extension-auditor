@@ -8,7 +8,6 @@ const repo = process.cwd();
 let root: string;
 beforeAll(async () => {
   root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "auditor-cli-")));
-  execFileSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconfig.json"], { cwd: repo });
 });
 afterAll(async () => { await fs.rm(root, { recursive: true, force: true }); });
 

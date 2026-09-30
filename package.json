@@ -31,7 +31,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit --pretty false",
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "keywords": [
