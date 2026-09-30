@@ -33,6 +33,7 @@ describe("CLI coverage exit contract", () => {
     expect(legacy.status).toBe(0);
     expect(JSON.parse(legacy.stdout).coverage.status).toBe("failed");
     expect(run(["--not-an-option"]).status).toBe(2);
+    expect(run(["--root", path.join(root, "absent")]).status).toBe(1);
   });
 
   it("runs the packaged scanner and TOML parser independently of the checkout", async () => {

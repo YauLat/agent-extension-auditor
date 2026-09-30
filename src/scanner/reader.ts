@@ -89,6 +89,13 @@ export class ScanReader {
           this.diagnostic("user_excluded", logical, kind);
           return;
         }
+        const approvedRoot = this.roots.filter((root) => root.kind.endsWith("-root") && isInside(canonical, root.path))
+          .sort((a, b) => b.path.length - a.path.length)[0];
+        if (approvedRoot && path.relative(approvedRoot.path, canonical).split(path.sep)
+          .some((part) => this.excludedDirectories.includes(part))) {
+          this.diagnostic("default_excluded", logical, kind);
+          return;
+        }
         const stat = isLink ? await fs.stat(canonical) : entry;
         if (stat.isDirectory()) {
           kind = "directory";

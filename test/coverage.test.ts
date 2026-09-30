@@ -178,6 +178,16 @@ describe("agent locations and scoped symlinks", () => {
     expect(report.coverage?.filesRead).toBe(1);
     expect(report.inventory.find((entry) => entry.type === "skill")?.agents).toEqual(["claude", "shared"]);
   });
+
+  it("does not bypass default directory exclusions through a differently named link", async () => {
+    const base = path.join(cwd, ".agents/skills");
+    await put(path.join(base, "node_modules/sample/SKILL.md"), remote);
+    await fs.symlink(path.join(base, "node_modules/sample"), path.join(base, "alias"));
+    const report = await scan();
+    expect(report.coverage?.filesRead).toBe(0);
+    expect(report.summary.inventory.skills).toBe(0);
+    expect(report.coverage?.diagnostics).toContainEqual(expect.objectContaining({ code: "default_excluded", path: path.join(base, "alias") }));
+  });
 });
 
 describe("whole skill packages and evidence", () => {

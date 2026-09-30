@@ -47,6 +47,12 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const generatedAt = options.generatedAt ?? new Date();
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+  if (!(await fs.stat(cwd).catch(() => undefined))?.isDirectory()) {
+    throw new Error("Workspace root is not an accessible directory.");
+  }
+  if ((options.includeHome ?? true) && !(await fs.stat(home).catch(() => undefined))?.isDirectory()) {
+    throw new Error("Home root is not an accessible directory.");
+  }
   const pathFilter = buildPathFilter(options, cwd, home);
   if (!Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1 || maxFileBytes > 64 * 1024 * 1024
     || !Number.isSafeInteger(maxDepth) || maxDepth < 0 || maxDepth > 100) {
@@ -706,8 +712,7 @@ function pathMatchesPathFilter(filePath: string, filter: ScanPathFilter): boolea
 }
 
 function isSameOrInside(candidatePath: string, parentPath: string): boolean {
-  const relativePath = path.relative(parentPath, candidatePath);
-  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+  return isInside(candidatePath, parentPath);
 }
 
 function inferSource(content: string): string | undefined {

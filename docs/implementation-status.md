@@ -13,10 +13,10 @@ Approved scope: improve the existing auditor's privacy and scan reliability (F01
 
 ## Verification
 
-- Linux x64, Node 24.19.0: typecheck, **62 tests**, build and whitespace checks pass.
+- Linux x64, Node 24.19.0: typecheck, **63 tests**, build and whitespace checks pass.
 - Original isolated C01 positive control remains valid. R01–R08 no longer reproduce against the new build. This covers selected synthetic cases, not a general detection-rate claim.
-- Additional cases cover malformed TOML, permission failures, nested configuration limits, broken/cyclic/out-of-scope links, exclusions, binary content, stable counts, CLI exit behavior and running the copied runtime independently.
-- Swift source changes and native decoding tests are present; macOS arm64/x86_64 CI is pending for this branch. No local Mac UI, Finder launch, Claude review, Developer ID signing, notarization or Gatekeeper validation has been performed here.
+- Follow-up boundary fixes prevent symlinks bypassing default directory exclusions and reject nonexistent/inaccessible home or workspace roots instead of showing complete coverage. Additional cases cover malformed TOML, permission failures, nested configuration limits, broken/cyclic/out-of-scope links, exclusions, binary content, stable counts, CLI exit behavior and running the copied runtime independently.
+- At first commit `752a4b9b84dd3941e361f0bc8652c7e1dc5a1636`, GitHub Node 20 and macOS arm64 CI passed; Intel Swift tests passed and packaging was pending at this checkpoint. Follow-up scope-boundary fixes require CI on the new head. See [PR #1](https://github.com/YauLat/agent-extension-auditor/pull/1) for current checks. No local Mac UI, Finder launch, Claude review, Developer ID signing, notarization or Gatekeeper validation has been performed here.
 
 ## Next work
 

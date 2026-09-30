@@ -1641,7 +1641,8 @@ function renderScript(): string {
 }
 
 function renderCoverage(report: ScanReport): string {
-  const state = report.coverage?.status ?? "unknown";
+  const status = report.coverage?.status;
+  const state = status === "complete" || status === "partial" || status === "failed" ? status : "unknown";
   return `<section class="panel" data-scan-status="${state}" aria-label="Scan coverage">
     <h2 data-i18n="coverage">${htmlCopy.en.coverage}</h2>
     <p role="status" data-i18n="${state}">${htmlCopy.en[state]}</p>
