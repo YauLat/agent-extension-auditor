@@ -8,7 +8,7 @@
 - Follow only in-scope symlinks, retain aliases, scan bundled skill text/scripts, and count hook command leaves once.
 - Add stable finding IDs and evidence kind `code`; static evidence does not prove execution.
 - Add scan exit codes 3/4 and `--allow-incomplete` compatibility. Bundle the pinned TOML parser with its license in the Mac app.
-- Add manual local baseline create/diff/accept/delete commands with private hash-only persistence, content/permission-bound review, move-aware matching, self-baseline exclusion, concurrent update guards, and fail-closed schema/rules/scope/coverage gates.
+- Add manual local baseline create/diff/accept/delete commands with private hash-only persistence, content/permission-bound review, derived-hash consistency checks, move-aware matching, self-baseline exclusion, concurrent update guards, and fail-closed schema/rules/scope/coverage gates.
 - Version and published releases remain unchanged pending review and release validation.
 
 

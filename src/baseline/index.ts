@@ -499,16 +499,24 @@ function isBaseline(value: unknown): value is BaselineSnapshot {
   return record.tool === "agent-audit-baseline" && record.schemaVersion === 1
     && record.reportSchemaVersion === 2 && record.coverageStatus === "complete"
     && typeof record.createdAt === "string" && typeof record.scannerVersion === "string"
-    && typeof record.rulesetVersion === "string" && typeof record.scopeHash === "string"
+    && typeof record.rulesetVersion === "string" && isSha256(record.scopeHash)
     && Array.isArray(record.assets) && record.assets.every(isBaselineAsset);
 }
 
 function isBaselineAsset(value: unknown): value is BaselineAsset {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return typeof record.identityHash === "string" && typeof record.contentHash === "string"
-    && typeof record.reviewHash === "string" && isInventoryType(record.type)
-    && typeof record.name === "string" && Array.isArray(record.findings) && record.findings.every(isBaselineFinding);
+  if (!isInventoryType(record.type) || typeof record.name !== "string"
+    || !isSha256(record.identityHash) || !isSha256(record.contentHash) || !isSha256(record.reviewHash)
+    || (record.source !== undefined && typeof record.source !== "string")
+    || (record.agents !== undefined && (!Array.isArray(record.agents)
+      || !record.agents.every((agent) => typeof agent === "string")))
+    || !Array.isArray(record.findings) || !record.findings.every(isBaselineFinding)) return false;
+  return record.identityHash === hashValue([record.type, record.name])
+    && record.reviewHash === hashValue([
+      record.contentHash,
+      (record.findings as BaselineFinding[]).map((finding) => finding.signature)
+    ]);
 }
 
 function isInventoryType(value: unknown): value is InventoryType {
@@ -519,11 +527,22 @@ function isInventoryType(value: unknown): value is InventoryType {
 function isBaselineFinding(value: unknown): value is BaselineFinding {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return typeof record.signature === "string" && typeof record.ruleId === "string"
-    && (record.severity === "critical" || record.severity === "high" || record.severity === "medium"
+  if (!isSha256(record.signature) || typeof record.ruleId !== "string"
+    || !(record.severity === "critical" || record.severity === "high" || record.severity === "medium"
       || record.severity === "low" || record.severity === "info")
-    && typeof record.evidenceKind === "string" && typeof record.location === "string"
-    && (record.keyPath === undefined || typeof record.keyPath === "string");
+    || typeof record.evidenceKind !== "string" || typeof record.location !== "string"
+    || (record.keyPath !== undefined && typeof record.keyPath !== "string")) return false;
+  return record.signature === hashValue({
+    ruleId: record.ruleId,
+    severity: record.severity,
+    evidenceKind: record.evidenceKind,
+    location: record.location,
+    keyPath: record.keyPath
+  });
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
 function hashValue(value: unknown): string {
