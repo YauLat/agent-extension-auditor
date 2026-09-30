@@ -2,6 +2,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  compareBaseline,
+  createBaseline,
+  deleteBaseline,
+  readBaseline,
+  renderBaselineDiff,
+  writeBaseline
+} from "./baseline/index.js";
 import { explainRule } from "./explain/index.js";
 import { renderReport, type ReportFormat } from "./report/index.js";
 import { filterReportByMinSeverity, scanAgentExtensions } from "./scanner/index.js";
@@ -56,7 +64,53 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "baseline") {
+    await runBaseline(rest);
+    return;
+  }
+
   throw new CliError(`Unknown command: ${command}`);
+}
+
+async function runBaseline(args: string[]): Promise<void> {
+  const [operation, ...optionArgs] = args;
+  const baselineOptions = parseBaselineOptions(optionArgs);
+  const parsed = parseOptions(baselineOptions.scanArgs);
+  if (parsed.minSeverity || parsed.output || parsed.formatProvided || parsed.allowIncomplete) {
+    throw new CliError("Baseline commands do not support --min-severity, --output, --format, or --allow-incomplete.");
+  }
+  const filePath = path.resolve(baselineOptions.file ?? path.join(parsed.root ?? process.cwd(), ".agent-audit-baseline.json"));
+
+  if (operation === "delete") {
+    if (!baselineOptions.confirmed) throw new CliError("baseline delete requires --yes.");
+    await deleteBaseline(filePath);
+    console.log(`Deleted baseline ${filePath}`);
+    return;
+  }
+  if (operation !== "create" && operation !== "diff" && operation !== "accept") {
+    throw new CliError("Usage: agent-audit baseline create|diff|accept|delete [--file <path>] [--yes]");
+  }
+  if (operation === "accept" && !baselineOptions.confirmed) {
+    throw new CliError("baseline accept requires --yes.");
+  }
+
+  const report = await scanAgentExtensions({
+    cwd: parsed.root,
+    home: parsed.home,
+    includeHome: parsed.includeHome,
+    includePaths: parsed.includePaths,
+    excludePaths: parsed.excludePaths
+  });
+  if (operation === "diff") {
+    const diff = compareBaseline(await readBaseline(filePath), report);
+    process.stdout.write(renderBaselineDiff(diff));
+    process.exitCode = diff.status === "incompatible" ? 5 : diff.status === "partial" ? 3 : 0;
+    return;
+  }
+
+  const baseline = createBaseline(report);
+  await writeBaseline(filePath, baseline, operation === "accept");
+  console.log(`${operation === "accept" ? "Accepted" : "Created"} baseline ${filePath} (${baseline.assets.length} assets)`);
 }
 
 async function runScan(args: string[]): Promise<void> {
@@ -204,6 +258,30 @@ interface ParsedRepairOptions {
   confirmed: boolean;
 }
 
+interface ParsedBaselineOptions {
+  file?: string;
+  confirmed: boolean;
+  scanArgs: string[];
+}
+
+function parseBaselineOptions(args: string[]): ParsedBaselineOptions {
+  const parsed: ParsedBaselineOptions = { confirmed: false, scanArgs: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--file") {
+      parsed.file = requireOptionValue(arg, args[++index]);
+    } else if (arg === "--yes") {
+      parsed.confirmed = true;
+    } else {
+      parsed.scanArgs.push(arg);
+      if (["--root", "--home", "--include", "--exclude", "--min-severity", "--format", "--output", "-o"].includes(arg)) {
+        parsed.scanArgs.push(requireOptionValue(arg, args[++index]));
+      }
+    }
+  }
+  return parsed;
+}
+
 function parseRepairOptions(args: string[]): ParsedRepairOptions {
   const parsed: ParsedRepairOptions = { confirmed: false };
 
@@ -345,6 +423,10 @@ Usage:
   agent-audit repair plan --action skill.add-source --path <SKILL.md> --source <https-url>
   agent-audit repair apply --action skill.add-source --path <SKILL.md> --source <https-url> --expected-hash <sha256> --yes
   agent-audit repair rollback --backup <backup-id> --yes
+  agent-audit baseline create [--file .agent-audit-baseline.json] [scan options]
+  agent-audit baseline diff [--file .agent-audit-baseline.json] [scan options]
+  agent-audit baseline accept --yes [--file .agent-audit-baseline.json] [scan options]
+  agent-audit baseline delete --yes [--file .agent-audit-baseline.json]
 
 Options:
   --root <path>                    Workspace root to scan. Defaults to the current directory.
@@ -364,11 +446,15 @@ Privacy:
   No telemetry. No cloud upload. No accounts. No secret values printed.
 
 Scan exits:
-  0 complete declared scope; 1 operation failed; 2 invalid usage; 3 partial scan; 4 no readable files in incomplete scope.
+  0 complete declared scope; 1 operation failed; 2 invalid usage; 3 partial scan; 4 no readable files; 5 incompatible baseline.
   Risk findings do not change the exit code. Incomplete scans still write a report.
 
 Repair safety:
   Repair planning is read-only. Apply and rollback require --yes, content-hash checks, and private local backups.
+
+Baseline safety:
+  Baselines contain hashes and sanitized finding signatures, not source text, raw commands, credentials, or absolute paths.
+  Replacing or deleting a baseline requires --yes; incomplete scans can never replace one or resolve prior risk.
 `);
 }
 

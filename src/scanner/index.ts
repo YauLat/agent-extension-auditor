@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
+import { createHash } from "node:crypto";
 import { parse as parseToml } from "smol-toml";
 import path from "node:path";
 import type {
@@ -182,7 +183,8 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       source: inferSource(content),
       aliases: [...file.aliases].map((alias) => toDisplayPath(alias, context.home)).sort(),
       agents: [...file.agents].sort(),
-      metadata: { bytes: Buffer.byteLength(content, "utf8") }
+      metadata: { bytes: Buffer.byteLength(content, "utf8") },
+      contentHash: hashAssetParts([["SKILL.md", content]])
     };
     context.inventory.push(item);
     if (!hasSourceMetadata(content)) addFinding(context, "UNKNOWN_SOURCE", skillFile, {
@@ -201,6 +203,10 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       }
       const text = await context.reader.read(bundled.path);
       if (text === undefined) continue;
+      item.contentHash = hashAssetParts([
+        ["previous", item.contentHash ?? ""],
+        [path.relative(path.dirname(skillFile), bundled.path), text]
+      ]);
       const evidence: FindingEvidence = /\.(md|mdx|txt)$/i.test(bundled.path)
         ? documentedEvidence : { kind: "code", confidence: "medium", active: "unknown" };
       detectTextPatterns(text, bundled.path, context, item.id, evidence, false);
@@ -254,6 +260,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     path: packageFile,
     displayPath: toDisplayPath(packageFile, context.home),
     source,
+    contentHash: hashText(content),
     metadata: {
       version: stringValue(parsed.version) ?? "unknown"
     }
@@ -267,6 +274,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     path: path.dirname(packageFile),
     displayPath: toDisplayPath(path.dirname(packageFile), context.home),
     source,
+    contentHash: item.contentHash,
     metadata: {
       package: name
     }
@@ -304,7 +312,7 @@ async function scanConfig(filePath: string, context: ScanContext, toml = false):
   if (content === undefined) return;
   const item: InventoryItem = {
     id: stableId("config", filePath), type: "config", name: path.basename(filePath),
-    path: filePath, displayPath: toDisplayPath(filePath, context.home)
+    path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(content)
   };
   context.inventory.push(item);
   let parsed: unknown;
@@ -335,7 +343,12 @@ async function scanTextFile(filePath: string, context: ScanContext): Promise<voi
   if (content === undefined) {
     return;
   }
-  detectTextPatterns(content, filePath, context);
+  const item: InventoryItem = {
+    id: stableId("config", filePath), type: "config", name: path.basename(filePath),
+    path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(content)
+  };
+  context.inventory.push(item);
+  detectTextPatterns(content, filePath, context, item.id);
 }
 
 function findMcpServers(value: unknown, filePath: string, context: ScanContext, keyPath = "", depth = 0): void {
@@ -374,6 +387,7 @@ function inspectMcpServer(
     name: serverName,
     path: filePath,
     displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(JSON.stringify(serverConfig)),
     metadata: {
       keyPath
     }
@@ -426,7 +440,7 @@ function detectJsonHooks(value: unknown, filePath: string, context: ScanContext,
     const commandPath = `${keyPath}.command`;
     const item: InventoryItem = {
       id: stableId("hook", filePath, commandPath), type: "hook", name: keyPath,
-      path: filePath, displayPath: toDisplayPath(filePath, context.home)
+      path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(value.command)
     };
     context.inventory.push(item);
     addFinding(context, "HOOK_SHELL_COMMAND", filePath, {
@@ -737,6 +751,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function resetRegexes(): void {
   secretNamePattern.lastIndex = 0;
   envReferencePattern.lastIndex = 0;
+}
+
+function hashText(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+function hashAssetParts(parts: Array<[string, string]>): string {
+  const hash = createHash("sha256");
+  for (const [name, content] of parts.sort(([a], [b]) => a.localeCompare(b))) {
+    hash.update(name.length.toString()).update(":").update(name).update("\0");
+    hash.update(content.length.toString()).update(":").update(content).update("\0");
+  }
+  return hash.digest("hex");
 }
 
 function coverageActions(actions: string[], status?: string): string[] {

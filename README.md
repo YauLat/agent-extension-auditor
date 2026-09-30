@@ -94,6 +94,9 @@ agent-audit ui
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
 agent-audit repair plan --action skill.add-source --path ./SKILL.md --source https://github.com/owner/repository
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
 ```
 
 Useful scan filters:
@@ -114,6 +117,19 @@ agent-audit repair rollback --backup <backup-id> --yes
 ```
 
 Planning is read-only. Apply and rollback require explicit confirmation. The engine rejects symlinks and stale previews, creates a private local backup, preserves file mode, and will not roll back over newer edits. Shell commands, hooks, credentials, network endpoints, package scripts, and write/delete findings remain manual-review only.
+
+## Manual Baseline Review
+
+Use a local baseline to review extension changes between scans. Keep the same scan scope for every command.
+
+```bash
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
+agent-audit baseline delete --yes
+```
+
+The baseline stores content hashes and sanitized finding signatures, not source text, raw commands, credentials, full configuration, or absolute paths. It is written as a private `0600` file and rejects symbolic links and multiply-linked files. `accept` and `delete` require `--yes`. A partial or failed scan can show new observations, but it cannot replace the last complete baseline or claim that earlier risks disappeared. Report schema, ruleset, or scope mismatches are marked incompatible instead of being silently compared.
 
 ## Review Interfaces
 

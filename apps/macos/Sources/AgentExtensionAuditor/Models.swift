@@ -121,6 +121,7 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     let path: String
     let displayPath: String
     let source: String?
+    var contentHash: String? = nil
     var aliases: [String]? = nil
     var agents: [String]? = nil
 }

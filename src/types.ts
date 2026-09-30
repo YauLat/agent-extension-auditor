@@ -62,6 +62,8 @@ export interface InventoryItem {
   path: string;
   displayPath: string;
   source?: string;
+  /** SHA-256 of the inspected asset content. It never contains source text. */
+  contentHash?: string;
   aliases?: string[];
   agents?: string[];
   metadata?: Record<string, string | number | boolean>;
