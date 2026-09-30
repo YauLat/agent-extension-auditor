@@ -99,7 +99,9 @@ async function runBaseline(args: string[]): Promise<void> {
     home: parsed.home,
     includeHome: parsed.includeHome,
     includePaths: parsed.includePaths,
-    excludePaths: parsed.excludePaths
+    // The baseline is product state, not an extension asset. Excluding it also prevents
+    // a custom baseline stored under a skill package from causing self-generated diffs.
+    excludePaths: [...parsed.excludePaths, filePath]
   });
   if (operation === "diff") {
     const diff = compareBaseline(await readBaseline(filePath), report);

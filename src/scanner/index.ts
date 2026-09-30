@@ -184,7 +184,7 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       aliases: [...file.aliases].map((alias) => toDisplayPath(alias, context.home)).sort(),
       agents: [...file.agents].sort(),
       metadata: { bytes: Buffer.byteLength(content, "utf8") },
-      contentHash: hashAssetParts([["SKILL.md", content]])
+      contentHash: hashAssetParts([["SKILL.md", content, context.reader.mode(skillFile) ?? 0]])
     };
     context.inventory.push(item);
     if (!hasSourceMetadata(content)) addFinding(context, "UNKNOWN_SOURCE", skillFile, {
@@ -204,8 +204,8 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       const text = await context.reader.read(bundled.path);
       if (text === undefined) continue;
       item.contentHash = hashAssetParts([
-        ["previous", item.contentHash ?? ""],
-        [path.relative(path.dirname(skillFile), bundled.path), text]
+        ["previous", item.contentHash ?? "", 0],
+        [path.relative(path.dirname(skillFile), bundled.path), text, context.reader.mode(bundled.path) ?? 0]
       ]);
       const evidence: FindingEvidence = /\.(md|mdx|txt)$/i.test(bundled.path)
         ? documentedEvidence : { kind: "code", confidence: "medium", active: "unknown" };
@@ -260,7 +260,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
     path: packageFile,
     displayPath: toDisplayPath(packageFile, context.home),
     source,
-    contentHash: hashText(content),
+    contentHash: hashText(content, context.reader.mode(packageFile)),
     metadata: {
       version: stringValue(parsed.version) ?? "unknown"
     }
@@ -312,7 +312,8 @@ async function scanConfig(filePath: string, context: ScanContext, toml = false):
   if (content === undefined) return;
   const item: InventoryItem = {
     id: stableId("config", filePath), type: "config", name: path.basename(filePath),
-    path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(content)
+    path: filePath, displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(content, context.reader.mode(filePath))
   };
   context.inventory.push(item);
   let parsed: unknown;
@@ -345,7 +346,8 @@ async function scanTextFile(filePath: string, context: ScanContext): Promise<voi
   }
   const item: InventoryItem = {
     id: stableId("config", filePath), type: "config", name: path.basename(filePath),
-    path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(content)
+    path: filePath, displayPath: toDisplayPath(filePath, context.home),
+    contentHash: hashText(content, context.reader.mode(filePath))
   };
   context.inventory.push(item);
   detectTextPatterns(content, filePath, context, item.id);
@@ -387,7 +389,7 @@ function inspectMcpServer(
     name: serverName,
     path: filePath,
     displayPath: toDisplayPath(filePath, context.home),
-    contentHash: hashText(JSON.stringify(serverConfig)),
+    contentHash: hashText(JSON.stringify(serverConfig), context.reader.mode(filePath)),
     metadata: {
       keyPath
     }
@@ -440,7 +442,8 @@ function detectJsonHooks(value: unknown, filePath: string, context: ScanContext,
     const commandPath = `${keyPath}.command`;
     const item: InventoryItem = {
       id: stableId("hook", filePath, commandPath), type: "hook", name: keyPath,
-      path: filePath, displayPath: toDisplayPath(filePath, context.home), contentHash: hashText(value.command)
+      path: filePath, displayPath: toDisplayPath(filePath, context.home),
+      contentHash: hashText(value.command, context.reader.mode(filePath))
     };
     context.inventory.push(item);
     addFinding(context, "HOOK_SHELL_COMMAND", filePath, {
@@ -753,14 +756,15 @@ function resetRegexes(): void {
   envReferencePattern.lastIndex = 0;
 }
 
-function hashText(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+function hashText(content: string, mode = 0): string {
+  return hashAssetParts([["content", content, mode]]);
 }
 
-function hashAssetParts(parts: Array<[string, string]>): string {
+function hashAssetParts(parts: Array<[string, string, number]>): string {
   const hash = createHash("sha256");
-  for (const [name, content] of parts.sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [name, content, mode] of parts.sort(([a], [b]) => a.localeCompare(b))) {
     hash.update(name.length.toString()).update(":").update(name).update("\0");
+    hash.update((mode & 0o777).toString(8)).update("\0");
     hash.update(content.length.toString()).update(":").update(content).update("\0");
   }
   return hash.digest("hex");

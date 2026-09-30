@@ -38,6 +38,7 @@ export class ScanReader {
   readonly files = new Map<string, DiscoveredFile>();
   private readonly diagnostics = new Map<string, ScanDiagnostic>();
   private readonly contents = new Map<string, string | undefined>();
+  private readonly modes = new Map<string, number>();
   private readonly readPaths = new Set<string>();
   readonly excludedDirectories = ["node_modules", ".git", "dist"];
 
@@ -177,7 +178,8 @@ export class ScanReader {
         return undefined;
       }
       const current = await fs.stat(filePath);
-      if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ino !== current.ino || before.dev !== current.dev
+      if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.mode !== after.mode
+        || before.ino !== current.ino || before.dev !== current.dev || before.mode !== current.mode
         || await fs.realpath(filePath) !== filePath) {
         this.diagnostic("read_failed", filePath);
         return undefined;
@@ -192,6 +194,7 @@ export class ScanReader {
         return undefined;
       }
       this.readPaths.add(filePath);
+      this.modes.set(filePath, before.mode & 0o777);
       this.contents.set(filePath, text);
       return text;
     } catch (error) {
@@ -202,6 +205,10 @@ export class ScanReader {
       await handle?.close();
       if (!this.contents.has(filePath)) this.contents.set(filePath, undefined);
     }
+  }
+
+  mode(filePath: string): number | undefined {
+    return this.modes.get(filePath);
   }
 
   coverage(): ScanCoverage {

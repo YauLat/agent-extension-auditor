@@ -94,6 +94,18 @@ describe("local baselines", () => {
     expect(diff.changedAssets.map((asset) => asset.name)).toEqual(["stable-skill"]);
   });
 
+  it.skipIf(process.platform === "win32")("requires review when a bundled script becomes executable", async () => {
+    const root = await temporaryRoot("mode-change");
+    const skillRoot = await addSkill(root, "stable");
+    const script = path.join(skillRoot, "scripts", "check.sh");
+    await fs.chmod(script, 0o644);
+    const baseline = createBaseline(await scan(root, "2026-09-30T00:00:00.000Z"));
+    await fs.chmod(script, 0o755);
+
+    const diff = compareBaseline(baseline, await scan(root, "2026-09-30T01:00:00.000Z"));
+    expect(diff.changedAssets.map((asset) => asset.name)).toEqual(["stable-skill"]);
+  });
+
   it("treats scope and ruleset changes as incompatible", async () => {
     const root = await temporaryRoot("compatibility");
     await addSkill(root, "stable");
@@ -168,5 +180,20 @@ describe("local baselines", () => {
     expect(run(["accept", "--root", root, "--home", root, "--no-home", "--file", baselinePath, "--yes"]).status).toBe(0);
     expect(run(["delete", "--file", baselinePath]).status).toBe(2);
     expect(run(["delete", "--file", baselinePath, "--yes"]).status).toBe(0);
+  });
+
+  it("excludes a custom baseline stored inside a scanned skill from its own diff", async () => {
+    const root = await temporaryRoot("self-baseline");
+    const skillRoot = await addSkill(root, "stable");
+    const cli = path.resolve("dist/cli.js");
+    const baselinePath = path.join(skillRoot, "review.json");
+    const run = (operation: string) => spawnSync(process.execPath, [
+      cli, "baseline", operation, "--root", root, "--home", root, "--no-home", "--file", baselinePath
+    ], { encoding: "utf8" });
+
+    expect(run("create").status).toBe(0);
+    const diff = run("diff");
+    expect(diff.status, diff.stderr).toBe(0);
+    expect(diff.stdout).toContain("Changed assets: 0");
   });
 });
