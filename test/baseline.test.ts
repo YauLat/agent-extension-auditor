@@ -2,11 +2,12 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BaselineError,
   compareBaseline,
   createBaseline,
+  deleteBaseline,
   readBaseline,
   writeBaseline
 } from "../src/baseline/index.js";
@@ -15,6 +16,7 @@ import { scanAgentExtensions } from "../src/scanner/index.js";
 const roots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -165,6 +167,43 @@ describe("local baselines", () => {
     const hardLinkPath = path.join(root, "hard.json");
     await fs.link(baselinePath, hardLinkPath);
     await expect(readBaseline(baselinePath)).rejects.toThrow("one hard link");
+  });
+
+  it("does not overwrite a baseline replaced at the final accept boundary", async () => {
+    const root = await temporaryRoot("replace-race");
+    await addSkill(root, "stable");
+    const baselinePath = path.join(root, "baseline.json");
+    const first = createBaseline(await scan(root, "2026-09-30T00:00:00.000Z"));
+    const concurrent = createBaseline(await scan(root, "2026-09-30T01:00:00.000Z"));
+    const replacement = createBaseline(await scan(root, "2026-09-30T02:00:00.000Z"));
+    await writeBaseline(baselinePath, first, false);
+    const originalRename = fs.rename.bind(fs);
+    const spy = vi.spyOn(fs, "rename").mockImplementationOnce(async (source, destination) => {
+      await fs.writeFile(baselinePath, `${JSON.stringify(concurrent, null, 2)}\n`, { mode: 0o600 });
+      return originalRename(source, destination);
+    });
+
+    await expect(writeBaseline(baselinePath, replacement, true)).rejects.toThrow("changed during update");
+    expect(await readBaseline(baselinePath)).toEqual(concurrent);
+    spy.mockRestore();
+  });
+
+  it("does not delete a baseline replaced at the deletion boundary", async () => {
+    const root = await temporaryRoot("delete-race");
+    await addSkill(root, "stable");
+    const baselinePath = path.join(root, "baseline.json");
+    const first = createBaseline(await scan(root, "2026-09-30T00:00:00.000Z"));
+    const concurrent = createBaseline(await scan(root, "2026-09-30T01:00:00.000Z"));
+    await writeBaseline(baselinePath, first, false);
+    const originalRename = fs.rename.bind(fs);
+    const spy = vi.spyOn(fs, "rename").mockImplementationOnce(async (source, destination) => {
+      await fs.writeFile(baselinePath, `${JSON.stringify(concurrent, null, 2)}\n`, { mode: 0o600 });
+      return originalRename(source, destination);
+    });
+
+    await expect(deleteBaseline(baselinePath)).rejects.toThrow("changed during deletion");
+    expect(await readBaseline(baselinePath)).toEqual(concurrent);
+    spy.mockRestore();
   });
 
   it("requires explicit CLI confirmation to accept or delete", async () => {

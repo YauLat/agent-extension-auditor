@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Finding, InventoryItem, InventoryType, ScanReport, Severity } from "../types.js";
@@ -178,9 +179,9 @@ export async function writeBaseline(filePath: string, baseline: BaselineSnapshot
   if (!realDirectory || realDirectory !== directory) {
     throw new BaselineError("Baseline directory must exist and must not resolve through a symbolic link.");
   }
-  let expectedHash: string | undefined;
+  let expected: ExistingBaseline | undefined;
   try {
-    expectedHash = (await readExistingBaseline(target)).hash;
+    expected = await readExistingBaseline(target);
     if (!replace) throw new BaselineError("Baseline already exists; use baseline accept --yes to replace it.");
   } catch (error) {
     if (error instanceof BaselineError && !error.message.startsWith("Baseline file does not exist")) throw error;
@@ -197,13 +198,8 @@ export async function writeBaseline(filePath: string, baseline: BaselineSnapshot
       await handle.close();
     }
     await fs.chmod(temporary, 0o600);
-    if (expectedHash) {
-      const current = await readExistingBaseline(target);
-      if (current.hash !== expectedHash) throw new BaselineError("Baseline changed during update; replacement was cancelled.");
-    } else if (await fs.lstat(target).then(() => true).catch(() => false)) {
-      throw new BaselineError("Baseline appeared during creation; write was cancelled.");
-    }
-    await fs.rename(temporary, target);
+    if (expected) await replaceBaseline(target, temporary, expected);
+    else await installBaseline(target, temporary);
   } finally {
     await fs.unlink(temporary).catch(() => undefined);
   }
@@ -211,10 +207,21 @@ export async function writeBaseline(filePath: string, baseline: BaselineSnapshot
 
 export async function deleteBaseline(filePath: string): Promise<void> {
   const target = path.resolve(filePath);
-  const before = await readExistingBaseline(target);
-  const after = await readExistingBaseline(target);
-  if (before.hash !== after.hash) throw new BaselineError("Baseline changed during deletion; delete was cancelled.");
-  await fs.unlink(target);
+  const expected = await readExistingBaseline(target);
+  const displaced = recoveryPath(target);
+  await fs.rename(target, displaced).catch(() => { throw new BaselineError("Baseline changed during deletion; delete was cancelled."); });
+  const moved = await readExistingBaseline(displaced).catch(async (error) => {
+    await restoreBaseline(displaced, target);
+    throw error;
+  });
+  if (!sameBaseline(expected, moved)) {
+    await restoreBaseline(displaced, target);
+    throw new BaselineError("Baseline changed during deletion; delete was cancelled.");
+  }
+  if (await pathExists(target)) {
+    throw new BaselineError(`A new baseline appeared during deletion; the original is preserved at ${displaced}.`);
+  }
+  await fs.unlink(displaced);
 }
 
 export function renderBaselineDiff(diff: BaselineDiff): string {
@@ -369,15 +376,58 @@ function findingChange(finding: BaselineFinding, asset: BaselineAsset): Baseline
   return { ...finding, assetType: asset.type, assetName: asset.name, assetIdentityHash: asset.identityHash };
 }
 
-async function readExistingBaseline(filePath: string): Promise<{ content: string; hash: string }> {
+interface ExistingBaseline {
+  content: string;
+  hash: string;
+  dev: number;
+  ino: number;
+}
+
+async function readExistingBaseline(filePath: string): Promise<ExistingBaseline> {
   const target = path.resolve(filePath);
-  let stats;
+  let initial;
   try {
-    stats = await fs.lstat(target);
+    initial = await fs.lstat(target);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new BaselineError("Baseline file does not exist.");
     throw new BaselineError("Baseline file cannot be inspected.");
   }
+  validateBaselineStats(initial);
+  let handle;
+  try {
+    handle = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const before = await handle.stat();
+    validateBaselineStats(before);
+    if (initial.dev !== before.dev || initial.ino !== before.ino) {
+      throw new BaselineError("Baseline changed while it was being opened.");
+    }
+    const buffer = Buffer.alloc(MAX_BASELINE_BYTES + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+      if (bytesRead === 0) break;
+      size += bytesRead;
+    }
+    if (size > MAX_BASELINE_BYTES) throw new BaselineError("Baseline exceeds the 16 MiB safety limit.");
+    const after = await handle.stat();
+    const current = await fs.lstat(target);
+    validateBaselineStats(current);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+      || before.mtimeMs !== after.mtimeMs || before.mode !== after.mode
+      || before.dev !== current.dev || before.ino !== current.ino) {
+      throw new BaselineError("Baseline changed while it was being read.");
+    }
+    const content = buffer.subarray(0, size).toString("utf8");
+    return { content, hash: hashValue(content), dev: before.dev, ino: before.ino };
+  } catch (error) {
+    if (error instanceof BaselineError) throw error;
+    throw new BaselineError("Baseline file cannot be read safely.");
+  } finally {
+    await handle?.close();
+  }
+}
+
+function validateBaselineStats(stats: Stats): void {
   if (stats.isSymbolicLink() || !stats.isFile() || stats.nlink !== 1) {
     throw new BaselineError("Baseline must be a regular file with one hard link, not a symbolic link.");
   }
@@ -385,8 +435,62 @@ async function readExistingBaseline(filePath: string): Promise<{ content: string
     throw new BaselineError("Baseline must be owned by the current user.");
   }
   if (stats.size > MAX_BASELINE_BYTES) throw new BaselineError("Baseline exceeds the 16 MiB safety limit.");
-  const content = await fs.readFile(target, "utf8").catch(() => { throw new BaselineError("Baseline file cannot be read."); });
-  return { content, hash: hashValue(content) };
+}
+
+async function installBaseline(target: string, temporary: string): Promise<void> {
+  try {
+    await fs.link(temporary, target);
+    await fs.unlink(temporary);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new BaselineError("Baseline appeared during creation; write was cancelled.");
+    }
+    throw error;
+  }
+}
+
+async function replaceBaseline(target: string, temporary: string, expected: ExistingBaseline): Promise<void> {
+  const displaced = recoveryPath(target);
+  await fs.rename(target, displaced).catch(() => { throw new BaselineError("Baseline changed during update; replacement was cancelled."); });
+  const moved = await readExistingBaseline(displaced).catch(async (error) => {
+    await restoreBaseline(displaced, target);
+    throw error;
+  });
+  if (!sameBaseline(expected, moved)) {
+    await restoreBaseline(displaced, target);
+    throw new BaselineError("Baseline changed during update; replacement was cancelled.");
+  }
+  try {
+    await installBaseline(target, temporary);
+  } catch (error) {
+    await restoreBaseline(displaced, target);
+    throw error;
+  }
+  await fs.unlink(displaced);
+}
+
+function recoveryPath(target: string): string {
+  return path.join(path.dirname(target), `.${path.basename(target)}.agent-audit-${randomUUID()}.old`);
+}
+
+async function restoreBaseline(displaced: string, target: string): Promise<void> {
+  try {
+    await fs.link(displaced, target);
+    await fs.unlink(displaced);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new BaselineError(`Baseline changed concurrently; the previous file is preserved at ${displaced}.`);
+    }
+    throw error;
+  }
+}
+
+function sameBaseline(left: ExistingBaseline, right: ExistingBaseline): boolean {
+  return left.hash === right.hash && left.dev === right.dev && left.ino === right.ino;
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  return fs.lstat(filePath).then(() => true).catch(() => false);
 }
 
 function isBaseline(value: unknown): value is BaselineSnapshot {
