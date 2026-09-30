@@ -9,6 +9,7 @@ import {
   createBaseline,
   deleteBaseline,
   readBaseline,
+  renderBaselineDiff,
   writeBaseline
 } from "../src/baseline/index.js";
 import { scanAgentExtensions } from "../src/scanner/index.js";
@@ -188,6 +189,24 @@ describe("local baselines", () => {
     expect(diff.changedAssets.map((asset) => asset.name)).toEqual(["stable-skill"]);
     expect(diff.addedAssets).toHaveLength(0);
     expect(diff.removedAssets).toHaveLength(0);
+  });
+
+  it("does not guess pairings when multiple assets with the same identity all change", async () => {
+    const root = await temporaryRoot("ambiguous-duplicate-name");
+    const first = await addSkill(root, "first", "First implementation.\n");
+    const second = await addSkill(root, "second", "Second implementation.\n");
+    const baseline = createBaseline(await scan(root, "2026-09-30T00:00:00.000Z"));
+    await fs.appendFile(path.join(first, "SKILL.md"), "First changed.\n");
+    await fs.appendFile(path.join(second, "SKILL.md"), "Second changed.\n");
+
+    const diff = compareBaseline(baseline, await scan(root, "2026-09-30T01:00:00.000Z"));
+    expect(diff.status).toBe("partial");
+    expect(diff.reasons).toEqual(["ambiguous_asset_identity"]);
+    expect(diff.addedAssets).toHaveLength(0);
+    expect(diff.removedAssets).toHaveLength(0);
+    expect(diff.changedAssets).toHaveLength(0);
+    expect(diff.unresolvedBaselineAssets).toBe(2);
+    expect(renderBaselineDiff(diff)).toContain("ambiguous identities are not guessed");
   });
 
   it("uses private atomic files and rejects symlink or hard-link baselines", async () => {

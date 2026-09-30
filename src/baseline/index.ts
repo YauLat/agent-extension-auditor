@@ -103,8 +103,9 @@ export function compareBaseline(baseline: BaselineSnapshot, report: ScanReport):
   }
 
   const current = snapshotReport(report, false);
-  const { matched, previousOnly, currentOnly } = matchAssets(baseline.assets, current.assets);
+  const { matched, previousOnly, currentOnly, ambiguousPrevious } = matchAssets(baseline.assets, current.assets);
   const incomplete = report.coverage!.status !== "complete";
+  const ambiguous = ambiguousPrevious.length > 0;
   const addedAssets = currentOnly.map((asset) => assetChange(asset, "current"));
   const removedAssets = incomplete ? [] : previousOnly.map((asset) => assetChange(asset, "previous"));
   const changedAssets: BaselineAssetChange[] = [];
@@ -141,8 +142,9 @@ export function compareBaseline(baseline: BaselineSnapshot, report: ScanReport):
     }
   }
 
-  const status = incomplete ? "partial" : "comparable";
+  const status = incomplete || ambiguous ? "partial" : "comparable";
   if (incomplete) reasons.push("current_scan_incomplete");
+  if (ambiguous) reasons.push("ambiguous_asset_identity");
   return finishDiff({
     tool: "agent-audit-baseline-diff",
     schemaVersion: 1,
@@ -155,7 +157,7 @@ export function compareBaseline(baseline: BaselineSnapshot, report: ScanReport):
     changedAssets: sortAssetChanges(changedAssets),
     newFindings: sortFindingChanges(newFindings),
     resolvedFindings: sortFindingChanges(resolvedFindings),
-    unresolvedBaselineAssets: incomplete ? baseline.assets.length : 0,
+    unresolvedBaselineAssets: incomplete ? baseline.assets.length : ambiguousPrevious.length,
     summary: { addedAssets: 0, removedAssets: 0, changedAssets: 0, newFindings: 0, resolvedFindings: 0 }
   });
 }
@@ -237,7 +239,10 @@ export function renderBaselineDiff(diff: BaselineDiff): string {
     `Resolved findings: ${diff.summary.resolvedFindings}`
   ];
   if (diff.unresolvedBaselineAssets) {
-    lines.push(`Unresolved baseline assets: ${diff.unresolvedBaselineAssets} (incomplete scans never resolve prior risk)`);
+    const explanations = [];
+    if (diff.reasons.includes("current_scan_incomplete")) explanations.push("incomplete scans never resolve prior risk");
+    if (diff.reasons.includes("ambiguous_asset_identity")) explanations.push("ambiguous identities are not guessed");
+    lines.push(`Unresolved baseline assets: ${diff.unresolvedBaselineAssets} (${explanations.join("; ")})`);
   }
   const addAssets = (title: string, values: BaselineAssetChange[]) => {
     if (!values.length) return;
@@ -327,7 +332,11 @@ function matchAssets(previous: BaselineAsset[], current: BaselineAsset[]) {
       matched.push([exact.asset, candidate.asset]);
     }
   }
-  const identities = new Set(next.filter((entry) => !entry.matched).map((entry) => entry.asset.identityHash));
+  const identities = new Set([
+    ...prior.filter((entry) => !entry.matched).map((entry) => entry.asset.identityHash),
+    ...next.filter((entry) => !entry.matched).map((entry) => entry.asset.identityHash)
+  ]);
+  const ambiguousIdentities = new Set<string>();
   for (const identity of identities) {
     const oldGroup = prior.filter((entry) => !entry.matched && entry.asset.identityHash === identity);
     const newGroup = next.filter((entry) => !entry.matched && entry.asset.identityHash === identity);
@@ -335,12 +344,18 @@ function matchAssets(previous: BaselineAsset[], current: BaselineAsset[]) {
       oldGroup[0].matched = true;
       newGroup[0].matched = true;
       matched.push([oldGroup[0].asset, newGroup[0].asset]);
+    } else if (oldGroup.length > 0 && newGroup.length > 0) {
+      ambiguousIdentities.add(identity);
     }
   }
   return {
     matched,
-    previousOnly: prior.filter((entry) => !entry.matched).map((entry) => entry.asset),
-    currentOnly: next.filter((entry) => !entry.matched).map((entry) => entry.asset)
+    previousOnly: prior.filter((entry) => !entry.matched
+      && !ambiguousIdentities.has(entry.asset.identityHash)).map((entry) => entry.asset),
+    currentOnly: next.filter((entry) => !entry.matched
+      && !ambiguousIdentities.has(entry.asset.identityHash)).map((entry) => entry.asset),
+    ambiguousPrevious: prior.filter((entry) => !entry.matched
+      && ambiguousIdentities.has(entry.asset.identityHash)).map((entry) => entry.asset)
   };
 }
 
