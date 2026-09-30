@@ -24,7 +24,7 @@ apps/macos/scripts/package-app.sh
 open "apps/macos/build/release/Agent Extension Auditor.app"
 ```
 
-The packaging script builds the TypeScript scanner and both macOS architectures, creates a universal app, copies `dist` into the app bundle, and applies a local ad-hoc signature. It does not download dependencies or contact a service.
+The packaging script builds the TypeScript scanner and both macOS architectures, creates a universal app, copies `dist` and the pinned TOML parser (including its license) into the app bundle, and applies a local ad-hoc signature. It does not download dependencies or contact a service.
 
 To build only the current runner architecture in CI, set `MACOS_BUILD_ARCHS` to `arm64` or `x86_64`. Its default is `universal`.
 

@@ -178,7 +178,7 @@ describe("agent extension scanner", () => {
     const report = await scanAgentExtensions({ cwd, home, includeHome: false });
     const ruleIds = report.findings.map((finding) => finding.ruleId);
 
-    expect(report.scannedLocations.some((location) => location.displayPath.includes(".claude"))).toBe(false);
+    expect(report.scannedLocations.some((location) => location.path.startsWith(home + path.sep))).toBe(false);
     expect(report.summary.inventory.skills).toBe(0);
     expect(report.summary.inventory.mcpServers).toBe(1);
     expect(ruleIds).not.toContain("DUPLICATE_SKILL_NAME");
@@ -309,7 +309,7 @@ describe("agent extension scanner", () => {
     const html = renderHtml(emptyReport);
 
     expect(html).toContain("No findings detected");
-    expect(html).toContain("The scan did not find review-worthy extension behavior");
+    expect(html).toContain("Check scan coverage and filters");
   });
 
   it("escapes HTML-sensitive report fields in the HTML renderer", async () => {

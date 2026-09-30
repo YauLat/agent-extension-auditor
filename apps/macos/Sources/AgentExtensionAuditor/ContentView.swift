@@ -14,6 +14,13 @@ struct ContentView: View {
                 selectedContent
             }
             .toolbar { toolbarContent }
+            .safeAreaInset(edge: .top) {
+                if let report = store.report {
+                    CoverageBanner(report: report, language: store.language) {
+                        store.selectedSection = .locations
+                    }
+                }
+            }
         }
         .frame(minWidth: 940, minHeight: 660)
         .background {

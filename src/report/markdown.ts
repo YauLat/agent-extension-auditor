@@ -1,5 +1,6 @@
 import type { Finding, ScanReport, Severity } from "../types.js";
 import { sortFindings } from "../rules/definitions.js";
+import { coverageLines } from "./coverage.js";
 
 const severities: Severity[] = ["critical", "high", "medium", "low", "info"];
 
@@ -10,6 +11,10 @@ export function renderMarkdown(report: ScanReport): string {
     `Generated at: ${report.generatedAt}`,
     "",
     "Privacy: telemetry disabled, no data uploaded.",
+    "",
+    "## Scan Coverage",
+    "",
+    ...coverageLines(report).map((line) => `- ${escapePipe(line)}`),
     "",
     "## Executive Summary",
     "",
@@ -69,7 +74,7 @@ export function renderMarkdown(report: ScanReport): string {
     }
     lines.push(`### ${capitalize(severity)}`, "");
     for (const finding of findings) {
-      lines.push(`- \`${finding.ruleId}\` in \`${formatLocation(finding)}\`: ${finding.message}`);
+      lines.push(`- \`${finding.ruleId}\` in \`${formatLocation(finding)}\`: ${finding.message} (evidence: ${finding.evidence?.kind ?? "unknown"}; execution not observed)`);
     }
     lines.push("");
   }
@@ -94,7 +99,7 @@ export function renderMarkdown(report: ScanReport): string {
     lines.push("No duplicate skill names detected.", "");
   } else {
     for (const finding of duplicateFindings) {
-      lines.push(`- \`${formatLocation(finding)}\`: ${finding.message}`);
+      lines.push(`- \`${formatLocation(finding)}\`: ${finding.message} (evidence: ${finding.evidence?.kind ?? "unknown"}; execution not observed)`);
     }
     lines.push("");
   }

@@ -13,6 +13,10 @@ struct LocationsView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
+            if let coverage = store.report?.coverage {
+                CoverageDetails(coverage: coverage, language: store.language)
+            }
+
             if let locations = store.report?.scannedLocations, !locations.isEmpty {
                 List(locations) { location in
                     HStack(alignment: .top, spacing: 12) {

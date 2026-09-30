@@ -32,6 +32,8 @@ It is not an antivirus engine and does not claim an extension is safe or malicio
 - Severity filtering with `critical`, `high`, `medium`, `low`, and `info`.
 - Read-only scanning plus an explicit guided repair for adding user-supplied source metadata to `SKILL.md`.
 - Repair preview, confirmation, content-hash protection, private backup, rescan, and guarded rollback.
+- Scan coverage status and safe diagnostics for unreadable, oversized, excluded, unsupported, or invalid files.
+- Canonical skill aliases, bundled script inspection, and Claude/Codex settings support.
 - Privacy-first defaults: no telemetry, no cloud upload, no account, no secret value printing.
 
 ## Install The CLI
@@ -148,6 +150,12 @@ Report formats:
 - Workspace agent files such as `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `USER.md`, and `MEMORY.md`
 - Workspace `.agents/skills`
 - npm-style plugin packages with `package.json`
+
+The reliability changes on this branch are source-only and are not yet on npm or a signed Mac release. See [the coverage contract](./docs/scan-coverage.md) for exact roots, supported formats, limits, and exit codes.
+
+Additional declared locations include user `~/.agents/skills`, Claude user/project `settings.json`, project `.claude/settings.local.json` and `.claude/skills`, and user/project `.codex/config.toml`. Skill package text files are inspected without executing scripts. Symbolic links are followed only within selected declared roots, and identical canonical skills are counted once.
+
+`scan` and `ui` now return **3 for partial scans** and **4 when an incomplete scope has no readable files**. A report is still produced. Use `--allow-incomplete` only if an existing integration needs legacy exit-0 behavior; the report's coverage status remains unchanged. Findings alone do not change exit codes.
 
 ## What It Detects
 

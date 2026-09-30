@@ -237,7 +237,8 @@ struct AuditRunner {
         }
         process.waitUntilExit()
 
-        guard process.terminationStatus == 0 else {
+        // Incomplete scans still contain useful findings and coverage diagnostics.
+        guard [0, 3, 4].contains(process.terminationStatus) else {
             throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus)
         }
 

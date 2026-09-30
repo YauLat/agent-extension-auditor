@@ -641,6 +641,8 @@
             </div>
           </header>
 
+          <section class="glass-card" id="coveragePanel" aria-label="Scan coverage"></section>
+
           <section class="summary-grid" id="riskSummary" aria-label="Risk summary"></section>
 
           <section class="dashboard-grid">
@@ -1041,6 +1043,21 @@
       });
     }
 
+    function renderCoverage() {
+      const c = state.report.coverage;
+      const zh = state.lang === "zh-Hant";
+      const title = !c ? (zh ? "舊版報告：掃描完整程度未知" : "Legacy report: coverage unknown")
+        : c.status === "complete" ? (zh ? "已檢查宣告範圍；不是安全保證" : "Declared scope inspected; not a safety guarantee")
+        : (zh ? "掃描不完整：部分位置未能檢查" : "Scan incomplete: some locations were not inspected");
+      const details = c ? [
+        `Read: ${c.filesRead}; uninspected files: ${c.filesSkipped}; skipped subtrees: ${c.directoriesSkipped}`,
+        `Scope: ${JSON.stringify(c.scope)}`,
+        `Filters: ${JSON.stringify(state.report.filters || {})}`,
+        ...(c.diagnostics || []).map(d => `${d.code}: ${d.displayPath} — ${d.message}`)
+      ] : [];
+      $("#coveragePanel").innerHTML = `<strong>${escapeHtml(title)}</strong><details><summary>Scope / 範圍</summary>${details.map(line => `<p>${escapeHtml(line)}</p>`).join("")}</details>`;
+    }
+
     function renderRiskSummary() {
       const counts = state.report.summary?.findings || severityCounts(state.report.findings || []);
       $("#riskSummary").innerHTML = severities.map((severity) => `
@@ -1175,6 +1192,7 @@
     function render() {
       updateCopy();
       renderMeta();
+      renderCoverage();
       renderRiskSummary();
       renderInventory();
       renderActions();

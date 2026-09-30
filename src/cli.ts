@@ -70,6 +70,9 @@ async function runScan(args: string[]): Promise<void> {
   });
   const report = filterReportByMinSeverity(rawReport, parsed.minSeverity);
   const output = renderReport(report, parsed.format);
+  if (!parsed.allowIncomplete) {
+    process.exitCode = report.coverage?.status === "failed" ? 4 : report.coverage?.status === "partial" ? 3 : 0;
+  }
 
   if (parsed.output) {
     await fs.writeFile(parsed.output, output, "utf8");
@@ -98,6 +101,9 @@ async function runUi(args: string[]): Promise<void> {
   });
   const report = filterReportByMinSeverity(rawReport, parsed.minSeverity);
   await runTerminalUi(report);
+  if (!parsed.allowIncomplete) {
+    process.exitCode = report.coverage?.status === "failed" ? 4 : report.coverage?.status === "partial" ? 3 : 0;
+  }
 }
 
 async function runDoctor(args: string[]): Promise<void> {
@@ -177,6 +183,7 @@ async function runRepair(args: string[]): Promise<void> {
 }
 
 interface ParsedOptions {
+  allowIncomplete?: boolean;
   format: ReportFormat;
   formatProvided: boolean;
   output?: string;
@@ -281,6 +288,8 @@ function parseOptions(args: string[]): ParsedOptions {
         throw new CliError("Missing value for --home");
       }
       parsed.home = value;
+    } else if (arg === "--allow-incomplete") {
+      parsed.allowIncomplete = true;
     } else if (arg === "--no-home") {
       parsed.includeHome = false;
     } else if (arg === "--min-severity") {
@@ -341,6 +350,7 @@ Options:
   --root <path>                    Workspace root to scan. Defaults to the current directory.
   --home <path>                    Home directory to scan. Defaults to the current user's home.
   --no-home                        Scan only workspace/project locations, not home-directory agent roots.
+  --allow-incomplete               Return exit 0 for partial/failed reports (legacy scripting compatibility).
   --include <path>[,<path>...]     Only scan matching paths.
   --exclude <path>[,<path>...]     Skip matching paths.
   --min-severity medium|high|critical
@@ -352,6 +362,10 @@ Options:
 
 Privacy:
   No telemetry. No cloud upload. No accounts. No secret values printed.
+
+Scan exits:
+  0 complete declared scope; 1 operation failed; 2 invalid usage; 3 partial scan; 4 no readable files in incomplete scope.
+  Risk findings do not change the exit code. Incomplete scans still write a report.
 
 Repair safety:
   Repair planning is read-only. Apply and rollback require --yes, content-hash checks, and private local backups.

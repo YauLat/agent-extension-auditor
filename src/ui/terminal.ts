@@ -1,3 +1,4 @@
+import { coverageLines } from "../report/coverage.js";
 import readline from "node:readline";
 import { sortFindings } from "../rules/definitions.js";
 import type { Finding, InventoryItem, InventoryType, ScanReport, Severity } from "../types.js";
@@ -182,6 +183,14 @@ export function renderTerminalUiScreen(
 
   lines.push(bold("Agent Audit UI", color), "Local-only. Read-only. No telemetry. No upload.");
   lines.push("");
+  lines.push(...coverageLines(report).slice(0, 2));
+  if (report.filters?.minSeverity) lines.push(`Report filter: ${report.filters.minSeverity}; hidden: ${report.filters.hiddenFindings}`);
+  if (report.coverage) {
+    const scope = report.coverage.scope;
+    lines.push(`Scope: home ${scope.includeHome ? "included" : "excluded"}; include ${scope.includePaths.join(", ") || "declared roots"}; exclude ${scope.excludePaths.join(", ") || "none"}`);
+  }
+  const firstProblem = report.coverage?.diagnostics.find((entry) => entry.affectsCompleteness);
+  if (firstProblem) lines.push(`${firstProblem.code}: ${firstProblem.displayPath} (scan --format json for all diagnostics)`);
   lines.push(renderRiskSummary(report, color));
   lines.push(renderCategoryTabs(categories, categoryIndex, width, color));
   lines.push(renderSeverityTabs(category, state.severity, width, color));
@@ -298,6 +307,7 @@ function renderFindingDetail(finding: Finding, width: number, color: boolean): s
     `  ${wrap(finding.title, width - 2).join("\n  ")}`,
     `  ${wrap(finding.message, width - 2).join("\n  ")}`,
     `  Location: ${formatLocation(finding)}`,
+    `  Evidence: ${finding.evidence?.kind ?? "unknown"}; execution not observed`,
     `  Recommendation: ${wrap(finding.recommendation, Math.max(20, width - 18)).join("\n  ")}`
   ];
 }

@@ -16,6 +16,27 @@ final class AgentExtensionAuditorTests: XCTestCase {
         XCTAssertEqual(report.findings.first?.remediation?.mode, .review)
         XCTAssertFalse(report.privacy.telemetry)
         XCTAssertFalse(report.privacy.uploaded)
+        XCTAssertNil(report.coverage, "Legacy reports must not imply complete coverage")
+    }
+
+    func testDecodesCoverageAndCodeEvidence() throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(sampleReport.utf8)) as? [String: Any])
+        object["schemaVersion"] = 2
+        object["coverage"] = [
+            "status": "partial", "filesRead": 1, "filesSkipped": 1, "directoriesSkipped": 0,
+            "scope": ["includeHome": false, "includePaths": [], "excludePaths": [],
+                      "defaultExcludedDirectories": ["node_modules", ".git", "dist"], "maxFileBytes": 524288, "maxDepth": 6] as [String: Any],
+            "diagnostics": [["code": "parse_failed", "displayPath": ".mcp.json",
+                             "message": "Invalid configuration syntax", "affectsCompleteness": true] as [String: Any]]
+        ] as [String: Any]
+        var findings = try XCTUnwrap(object["findings"] as? [[String: Any]])
+        findings[0]["evidence"] = ["kind": "code", "confidence": "medium", "active": "unknown"]
+        object["findings"] = findings
+        let report = try JSONDecoder().decode(ScanReport.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(report.schemaVersion, 2)
+        XCTAssertEqual(report.coverage?.status, "partial")
+        XCTAssertEqual(report.coverage?.diagnostics.first?.code, "parse_failed")
+        XCTAssertEqual(report.findings.first?.evidence?.kind, .code)
     }
 
     func testScanRequestBuildsArgumentsWithoutShellInterpolation() {
