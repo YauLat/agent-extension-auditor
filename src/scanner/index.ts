@@ -23,8 +23,9 @@ import {
   sanitizePublicSource,
   sanitizeJsonError
 } from "../util/text.js";
-import { exists, findFiles, readSmallFile } from "./files.js";
+import { exists, findFiles, hasSymlinkBelow, readSmallFile } from "./files.js";
 import { getDefaultTargets } from "./targets.js";
+import { readCodexMcpToml } from "./toml.js";
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_DEPTH = 6;
@@ -57,18 +58,21 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
     maxFileBytes,
     maxDepth,
     pathFilter,
+    scannedSkills: new Set(),
     inventory: [],
     findings: []
   };
 
   for (const target of targets) {
-    if (!(await exists(target.path))) {
+    if (!(await exists(target.path)) || await hasSymlinkBelow(target.path, home) || await hasSymlinkBelow(target.path, cwd)) {
       continue;
     }
     if (target.kind === "skill-root") {
       await scanSkillRoot(target.path, context);
     } else if (target.kind === "plugin-root") {
       await scanPluginRoot(target.path, context);
+    } else if (target.kind === "toml-config") {
+      await scanTomlConfig(target.path, context);
     } else if (target.kind === "mcp-config" || target.kind === "agent-config") {
       await scanJsonConfig(target.path, context);
       await scanTextFile(target.path, context);
@@ -118,6 +122,7 @@ interface ScanContext {
   maxFileBytes: number;
   maxDepth: number;
   pathFilter: ScanPathFilter;
+  scannedSkills: Set<string>;
   inventory: InventoryItem[];
   findings: Finding[];
 }
@@ -146,48 +151,116 @@ async function scanSkillRoot(root: string, context: ScanContext): Promise<void> 
     (filePath) => pathMatchesPathFilter(filePath, context.pathFilter)
   );
   for (const skillFile of skillFiles) {
-    const content = await readSmallFile(skillFile, context.maxFileBytes);
-    if (content === undefined) {
-      continue;
-    }
-
-    const name = parseFrontmatterName(content) ?? path.basename(path.dirname(skillFile));
-    const item: InventoryItem = {
-      id: stableId("skill", skillFile),
-      type: "skill",
-      name,
-      path: skillFile,
-      displayPath: toDisplayPath(skillFile, context.home),
-      source: inferSource(content),
-      metadata: {
-        bytes: Buffer.byteLength(content, "utf8")
-      }
-    };
-    context.inventory.push(item);
-
-    if (!hasSourceMetadata(content)) {
-      addFinding(context, "UNKNOWN_SOURCE", skillFile, {
-        itemId: item.id,
-        message: "Skill does not include obvious source, origin, repository, or URL metadata."
-      });
-    }
-    if (Buffer.byteLength(content, "utf8") > OVERSIZED_SKILL_BYTES) {
-      addFinding(context, "OVERSIZED_SKILL_CONTEXT", skillFile, {
-        itemId: item.id,
-        message: `Skill file is larger than ${OVERSIZED_SKILL_BYTES} bytes.`
-      });
-    }
-
-    detectTextPatterns(content, skillFile, context, item.id);
+    await scanSkillFile(skillFile, context);
   }
 }
 
+async function scanSkillFile(skillFile: string, context: ScanContext, pluginId?: string): Promise<void> {
+  if (!pathMatchesPathFilter(skillFile, context.pathFilter) || context.scannedSkills.has(skillFile)) return;
+  context.scannedSkills.add(skillFile);
+  const content = await readSmallFile(skillFile, context.maxFileBytes);
+  if (content === undefined) return;
+
+  const name = parseFrontmatterName(content) ?? path.basename(path.dirname(skillFile));
+  const item: InventoryItem = {
+    id: stableId("skill", skillFile),
+    type: "skill",
+    name,
+    path: skillFile,
+    displayPath: toDisplayPath(skillFile, context.home),
+    source: inferSource(content),
+    metadata: {
+      bytes: Buffer.byteLength(content, "utf8"),
+      ...(pluginId ? { pluginId } : {})
+    }
+  };
+  context.inventory.push(item);
+
+  if (!hasSourceMetadata(content)) {
+    addFinding(context, "UNKNOWN_SOURCE", skillFile, {
+      itemId: item.id,
+      message: "Skill does not include obvious source, origin, repository, or URL metadata."
+    });
+  }
+  if (Buffer.byteLength(content, "utf8") > OVERSIZED_SKILL_BYTES) {
+    addFinding(context, "OVERSIZED_SKILL_CONTEXT", skillFile, {
+      itemId: item.id,
+      message: `Skill file is larger than ${OVERSIZED_SKILL_BYTES} bytes.`
+    });
+  }
+
+  detectTextPatterns(content, skillFile, context, item.id);
+}
+
 async function scanPluginRoot(root: string, context: ScanContext): Promise<void> {
-  const packageFiles = (
-    await findFiles(root, (filePath) => path.basename(filePath) === "package.json", context.maxDepth)
-  ).filter((filePath) => pathMatchesPathFilter(filePath, context.pathFilter));
-  for (const packageFile of packageFiles) {
+  const isManifest = (file: string) => path.basename(file) === "plugin.json"
+    && [".claude-plugin", ".codex-plugin"].includes(path.basename(path.dirname(file)));
+  const files = await findFiles(root, file => isManifest(file)
+    || ["package.json", "SKILL.md", ".mcp.json"].includes(path.basename(file))
+    || (path.basename(file) === "hooks.json" && path.basename(path.dirname(file)) === "hooks"), context.maxDepth);
+  for (const manifest of files.filter(isManifest)) {
+    await scanPluginManifest(manifest, context);
+  }
+  for (const packageFile of files.filter(file => path.basename(file) === "package.json")) {
     await scanPackageJson(packageFile, context);
+  }
+  const pluginRoots = files.filter(isManifest).map(file => path.dirname(path.dirname(file)));
+  for (const file of files) {
+    if (path.basename(file) === "SKILL.md") {
+      const plugin = context.inventory.filter(item => item.type === "plugin" && isSameOrInside(file, item.path))
+        .sort((a, b) => b.path.length - a.path.length)[0];
+      await scanSkillFile(file, context, plugin?.id);
+    } else if (pluginRoots.some(pluginRoot => file === path.join(pluginRoot, ".mcp.json")
+      || file === path.join(pluginRoot, "hooks", "hooks.json"))) {
+      await scanJsonConfig(file, context, path.basename(file) === ".mcp.json");
+    }
+  }
+}
+
+async function scanPluginManifest(filePath: string, context: ScanContext): Promise<void> {
+  if (!pathMatchesPathFilter(filePath, context.pathFilter)) return;
+  const content = await readSmallFile(filePath, context.maxFileBytes);
+  if (content === undefined) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+    if (!isRecord(parsed)) throw new Error("Invalid manifest");
+  } catch {
+    addConfigInventory(filePath, context, { parseError: "Invalid plugin manifest JSON" });
+    return;
+  }
+  const pluginRoot = path.dirname(path.dirname(filePath));
+  const id = stableId("plugin", pluginRoot);
+  if (!context.inventory.some(item => item.id === id)) {
+    context.inventory.push({
+      id, type: "plugin", name: stringValue(parsed.name) ?? path.basename(pluginRoot),
+      path: pluginRoot, displayPath: toDisplayPath(pluginRoot, context.home),
+      source: sanitizePublicSource(stringValue(parsed.repository) ?? stringValue(parsed.homepage)),
+      metadata: { manifest: path.relative(pluginRoot, filePath), version: stringValue(parsed.version) ?? "unknown" }
+    });
+  }
+  findMcpServers(parsed, filePath, context);
+  detectJsonHooks(parsed, filePath, context);
+}
+
+function addConfigInventory(filePath: string, context: ScanContext, metadata?: InventoryItem["metadata"]): void {
+  context.inventory.push({
+    id: stableId("config", filePath), type: "config", name: path.basename(filePath),
+    path: filePath, displayPath: toDisplayPath(filePath, context.home), metadata
+  });
+}
+
+async function scanTomlConfig(filePath: string, context: ScanContext): Promise<void> {
+  if (!pathMatchesPathFilter(filePath, context.pathFilter)) return;
+  const content = await readSmallFile(filePath, context.maxFileBytes);
+  if (content === undefined) return;
+  const result = readCodexMcpToml(content);
+  addConfigInventory(filePath, context, {
+    coverage: "Static MCP subset; not full TOML validation",
+    ...(result.parseError ? { parseError: result.parseError } : {})
+  });
+  for (const [name, config] of Object.entries(result.servers)) {
+    inspectMcpServer(name, config, filePath, context, `mcp_servers.${name}`);
   }
 }
 
@@ -238,7 +311,9 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
       package: name
     }
   };
-  context.inventory.push(pluginItem);
+  const owningPlugin = context.inventory.some(existing => existing.type === "plugin"
+    && (existing.id === pluginItem.id || (existing.metadata?.manifest && isSameOrInside(packageFile, existing.path))));
+  if (!owningPlugin) context.inventory.push(pluginItem);
 
   const scripts = isRecord(parsed.scripts) ? parsed.scripts : {};
   for (const scriptName of ["preinstall", "install", "postinstall", "prepare"]) {
@@ -262,7 +337,7 @@ async function scanPackageJson(packageFile: string, context: ScanContext): Promi
   detectTextPatterns(content, packageFile, context, item.id);
 }
 
-async function scanJsonConfig(filePath: string, context: ScanContext): Promise<void> {
+async function scanJsonConfig(filePath: string, context: ScanContext, flatMcp = false): Promise<void> {
   if (!pathMatchesPathFilter(filePath, context.pathFilter)) {
     return;
   }
@@ -297,6 +372,11 @@ async function scanJsonConfig(filePath: string, context: ScanContext): Promise<v
   });
 
   findMcpServers(parsed, filePath, context);
+  if (flatMcp && isRecord(parsed) && !Object.hasOwn(parsed, "mcpServers")) {
+    for (const [name, config] of Object.entries(parsed)) {
+      if (isRecord(config)) inspectMcpServer(name, config, filePath, context, name);
+    }
+  }
   detectJsonHooks(parsed, filePath, context);
 }
 
@@ -350,7 +430,9 @@ function inspectMcpServer(
     path: filePath,
     displayPath: toDisplayPath(filePath, context.home),
     metadata: {
-      keyPath
+      keyPath,
+      ...(isRecord(serverConfig) && typeof serverConfig.enabled === "boolean"
+        ? { configuredEnabled: serverConfig.enabled } : {})
     }
   };
   context.inventory.push(item);
@@ -368,11 +450,14 @@ function inspectMcpServer(
     });
   }
 
-  if (isRecord(serverConfig.env) && Object.keys(serverConfig.env).length > 0) {
+  const envCount = (isRecord(serverConfig.env) ? Object.keys(serverConfig.env).length : 0)
+    + (Array.isArray(serverConfig.env_vars) ? serverConfig.env_vars.length : 0)
+    + (typeof serverConfig.bearer_token_env_var === "string" ? 1 : 0);
+  if (envCount > 0) {
     addFinding(context, "MCP_ENV_REFERENCE", filePath, {
       itemId: item.id,
       keyPath: `${keyPath}.env`,
-      message: `MCP server references ${Object.keys(serverConfig.env).length} environment variable(s). Secret values are not printed.`
+      message: `MCP server references ${envCount} environment variable(s). Secret values are not printed.`
     });
   }
 

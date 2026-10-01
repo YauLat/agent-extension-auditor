@@ -1,7 +1,12 @@
 import SwiftUI
 
 enum AuditorTheme {
-    static let accent = Color(red: 0.02, green: 0.39, blue: 0.43)
+    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
+        if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+            return NSColor(srgbRed: 0.38, green: 0.83, blue: 0.86, alpha: 1)
+        }
+        return NSColor(srgbRed: 0.02, green: 0.39, blue: 0.43, alpha: 1)
+    })
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let border = Color.primary.opacity(0.10)
 }
@@ -54,6 +59,8 @@ extension SidebarSection {
 }
 
 private struct GlassSurfaceModifier: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let tint: Color?
     let cornerRadius: CGFloat
 
@@ -61,7 +68,11 @@ private struct GlassSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
-        if #available(macOS 26.0, *) {
+        if contrast == .increased || reduceTransparency {
+            content
+                .background(Color(nsColor: .controlBackgroundColor), in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.6), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
             if let tint {
                 content.glassEffect(.regular.tint(tint.opacity(0.16)), in: shape)
             } else {
@@ -76,8 +87,44 @@ private struct GlassSurfaceModifier: ViewModifier {
 }
 
 extension View {
-    func auditorGlass(tint: Color? = nil, cornerRadius: CGFloat = 8) -> some View {
+    func auditorGlass(tint: Color? = nil, cornerRadius: CGFloat = 14) -> some View {
         modifier(GlassSurfaceModifier(tint: tint, cornerRadius: cornerRadius))
+    }
+}
+
+struct AuditorCanvas: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        ZStack {
+            AuditorTheme.canvas
+            if !reduceTransparency && contrast != .increased {
+                LinearGradient(
+                    colors: [AuditorTheme.accent.opacity(0.07), .clear, Color.blue.opacity(0.025)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
+struct AuditorCardButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(AuditorTheme.accent.opacity(hovering ? 0.4 : 0), lineWidth: 1))
+            .shadow(color: .black.opacity(hovering ? 0.09 : 0.025), radius: hovering ? 12 : 3, y: hovering ? 5 : 1)
+            .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.985 : 1))
+            .offset(y: reduceMotion || !hovering || configuration.isPressed ? 0 : -2)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: hovering)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+            .onHover { hovering = $0 }
     }
 }
 

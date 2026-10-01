@@ -9,11 +9,19 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     PageHeader(
                         title: text(.overview, language: store.language),
-                        subtitle: "agent-audit \(report.version) · \(report.generatedAt)",
+                        subtitle: "agent-audit \(report.version) · \(formattedScanDate(report.generatedAt))",
                         symbol: "rectangle.3.group.fill"
                     )
 
                     PrivacyStrip(language: store.language)
+
+                    let incompleteCount = report.inventory.filter(\.hasIncompleteEvidence).count
+                    if incompleteCount > 0 {
+                        EvidenceNotice(
+                            title: "\(text(.coverageNotice, language: store.language)): \(incompleteCount.formatted())",
+                            detail: text(.coverageNoticeDetail, language: store.language)
+                        )
+                    }
 
                     SectionTitle(
                         title: text(.severityBreakdown, language: store.language),
@@ -40,7 +48,7 @@ struct OverviewView: View {
                     )
                     GlassGroup {
                         LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 180, maximum: 280), spacing: 12)],
+                            columns: [GridItem(.adaptive(minimum: 240, maximum: 400), spacing: 12)],
                             spacing: 12
                         ) {
                             ForEach(InventoryType.allCases) { type in
@@ -69,9 +77,17 @@ struct OverviewView: View {
             )
         }
     }
+
+    private func formattedScanDate(_ value: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: value) else { return value }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
 }
 
 private struct SeverityMetricCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let severity: Severity
     let count: Int
     let language: AppLanguage
@@ -93,16 +109,19 @@ private struct SeverityMetricCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .fixedSize(horizontal: true, vertical: false)
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: count)
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
-        .frame(minHeight: 84)
+        .padding(18)
+        .frame(minHeight: 96)
         .auditorGlass(tint: severity.color)
     }
 }
 
 private struct InventoryMetricCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let type: InventoryType
     let count: Int
     let language: AppLanguage
@@ -120,6 +139,8 @@ private struct InventoryMetricCard: View {
                     Text(type.label(language: language))
                         .font(.subheadline.weight(.semibold))
                     Text(count.formatted())
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: count)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -129,12 +150,12 @@ private struct InventoryMetricCard: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(14)
-            .frame(minHeight: 76)
+            .padding(18)
+            .frame(minHeight: 92)
             .contentShape(Rectangle())
             .auditorGlass(tint: AuditorTheme.accent)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AuditorCardButtonStyle())
     }
 }
 

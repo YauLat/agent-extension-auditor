@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: AuditStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -10,9 +11,12 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
         } detail: {
             ZStack {
-                AuditorTheme.canvas.ignoresSafeArea()
+                AuditorCanvas()
                 selectedContent
+                    .id(store.selectedSection)
+                    .transition(.opacity)
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.selectedSection)
             .toolbar { toolbarContent }
         }
         .frame(minWidth: 940, minHeight: 660)

@@ -64,9 +64,7 @@ export function sanitizePublicSource(value: string | undefined): string | undefi
   return source.toString();
 }
 
-export function sanitizeJsonError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.split("\n", 1)[0] ?? "Invalid JSON";
-  }
+export function sanitizeJsonError(_error: unknown): string {
+  // Native parser messages may contain excerpts with credentials.
   return "Invalid JSON";
 }

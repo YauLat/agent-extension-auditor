@@ -113,6 +113,42 @@ struct RollbackRepairResult: Codable, Equatable {
     let restored: Bool
 }
 
+struct InventoryMetadata: Codable, Equatable {
+    let configuredEnabled: Bool?
+    let pluginId: String?
+    let parseError: String?
+    let coverage: String?
+
+    var isIncomplete: Bool { parseError != nil || coverage != nil }
+
+    private enum CodingKeys: String, CodingKey {
+        case configuredEnabled, pluginId, parseError, coverage
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
+            configuredEnabled = nil
+            pluginId = nil
+            parseError = "Unreadable inventory metadata"
+            coverage = nil
+            return
+        }
+        var invalid = false
+        func read<T: Decodable>(_ type: T.Type, _ key: CodingKeys) -> T? {
+            do { return try values.decodeIfPresent(type, forKey: key) }
+            catch { invalid = true; return nil }
+        }
+        configuredEnabled = read(Bool.self, .configuredEnabled)
+        let owner = read(String.self, .pluginId)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        pluginId = owner?.isEmpty == false ? owner : nil
+        let error = read(String.self, .parseError)
+        let scope = read(String.self, .coverage)
+        // Parser messages can contain source excerpts. Keep only the evidence state.
+        parseError = invalid || error != nil ? "Incomplete inventory metadata" : nil
+        coverage = scope != nil ? "Limited static coverage" : nil
+    }
+}
+
 struct InventoryItem: Codable, Identifiable, Equatable {
     let id: String
     let type: InventoryType
@@ -120,6 +156,14 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     let path: String
     let displayPath: String
     let source: String?
+    let metadata: InventoryMetadata?
+
+    var hasIncompleteEvidence: Bool { metadata?.isIncomplete == true }
+
+    func owningPlugin(in inventory: [InventoryItem]) -> InventoryItem? {
+        guard let pluginId = metadata?.pluginId else { return nil }
+        return inventory.first { $0.type == .plugin && $0.id == pluginId }
+    }
 }
 
 struct ScannedLocation: Codable, Identifiable, Equatable {

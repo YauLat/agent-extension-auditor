@@ -55,6 +55,8 @@ The macOS app is an optional native SwiftUI interface. It is not distributed thr
 
 Requirements: macOS 14 or newer, Xcode 26, and Node.js 20 or newer.
 
+Inventory cards distinguish explicit MCP configuration from unverified runtime activity, flag incomplete parsing or limited coverage, and show bundled skills' owning plugins. Native card feedback, page fades and count transitions respect Reduce Motion; surfaces also adapt to Increased Contrast and Reduce Transparency.
+
 Local source builds remain ad-hoc signed and never use a release certificate unless an explicit `MACOS_SIGN_IDENTITY` is supplied:
 
 ```bash
@@ -144,10 +146,17 @@ Report formats:
 
 - Claude skills and plugins under `~/.claude`
 - Codex skills and plugin cache under `~/.codex`
+- Shared `~/.agents/skills`, Hermes `~/.hermes/skills`, and SkillClaw `~/.skillclaw/shared/default/skills`
+- Codex MCP declarations in home and workspace `.codex/config.toml`
 - MCP config in `~/.mcp.json`, project `.mcp.json`, and agent config files
 - Workspace agent files such as `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `USER.md`, and `MEMORY.md`
 - Workspace `.agents/skills`
 - npm-style plugin packages with `package.json`
+- Claude and Codex plugin manifests (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`), bundled `SKILL.md` files, inline MCP/hooks, and conventional `.mcp.json` / `hooks/hooks.json` files
+
+Discovery is bounded by the existing file-size, depth, and include/exclude limits. Symbolic links under scan roots are skipped. `--no-home` leaves workspace scanning enabled. A plugin with both a manifest and `package.json` is counted once; nested packages remain package components rather than separate plugins. Package lifecycle findings remain available.
+
+The Codex reader supports a static TOML subset, including tables, dotted/quoted keys, strings, arrays, and inline tables. Invalid or unsupported input produces a generic `metadata.parseError` in the JSON report and omits MCP extraction for that file. It is not a complete TOML validator. Optional inventory metadata records configured enablement and plugin-to-skill associations; the native app displays these states and coverage limits without showing raw parser errors. Older reports remain readable, with unavailable state marked as unknown. Discovery and findings never establish whether an extension is running. Arbitrary manifest-referenced paths and remote manifests are not followed.
 
 ## What It Detects
 

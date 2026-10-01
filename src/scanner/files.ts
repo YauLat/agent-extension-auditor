@@ -12,7 +12,7 @@ export async function exists(filePath: string): Promise<boolean> {
 
 export async function readSmallFile(filePath: string, maxBytes: number): Promise<string | undefined> {
   try {
-    const stat = await fs.stat(filePath);
+    const stat = await fs.lstat(filePath);
     if (!stat.isFile() || stat.size > maxBytes) {
       return undefined;
     }
@@ -28,6 +28,11 @@ export async function findFiles(
   maxDepth: number
 ): Promise<string[]> {
   const results: string[] = [];
+  try {
+    if (!(await fs.lstat(root)).isDirectory()) return results;
+  } catch {
+    return results;
+  }
 
   async function walk(current: string, depth: number): Promise<void> {
     if (depth > maxDepth) {
@@ -55,4 +60,19 @@ export async function findFiles(
 
   await walk(root, 0);
   return results.sort();
+}
+
+// Only check below the supplied boundary; system aliases such as macOS /var
+// may legitimately appear above a caller-provided home or workspace.
+export async function hasSymlinkBelow(filePath: string, boundary: string): Promise<boolean> {
+  const relative = path.relative(boundary, filePath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+  let current = boundary;
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      if ((await fs.lstat(current)).isSymbolicLink()) return true;
+    } catch { return false; }
+  }
+  return false;
 }

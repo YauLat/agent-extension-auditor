@@ -67,7 +67,7 @@ struct SidebarView: View {
             }
         } icon: {
             Image(systemName: section.symbol)
-                .foregroundStyle(section == store.selectedSection ? AuditorTheme.accent : .secondary)
+                .foregroundStyle(section == store.selectedSection ? Color.primary : .secondary)
         }
         .tag(section)
     }

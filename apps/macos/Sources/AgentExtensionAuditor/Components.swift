@@ -15,7 +15,8 @@ struct PageHeader: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .tracking(-0.6)
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -23,6 +24,57 @@ struct PageHeader: View {
             }
             Spacer(minLength: 12)
         }
+    }
+}
+
+struct StatusPill: View {
+    let title: String
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Label(title, systemImage: symbol)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(color.opacity(0.09), in: Capsule())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct ConfigurationPill: View {
+    let enabled: Bool?
+    let language: AppLanguage
+
+    var body: some View {
+        StatusPill(
+            title: text(enabled.map { $0 ? .configuredEnabled : .configuredDisabled } ?? .configurationUnspecified, language: language),
+            symbol: enabled.map { $0 ? "checkmark.circle" : "minus.circle" } ?? "questionmark.circle",
+            color: enabled == true ? AuditorTheme.accent : .secondary
+        )
+    }
+}
+
+struct EvidenceNotice: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.title3).foregroundStyle(Severity.medium.color)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Severity.medium.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Severity.medium.color.opacity(0.25)))
+        .accessibilityElement(children: .combine)
     }
 }
 

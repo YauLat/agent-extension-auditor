@@ -9,6 +9,12 @@ export function getDefaultTargets(cwd: string, home: string, options: DefaultTar
   const includeHome = options.includeHome ?? true;
   const workspaceFiles = ["AGENTS.md", "CLAUDE.md", "SOUL.md", "USER.md", "MEMORY.md", ".mcp.json"];
   const homeTargets: TargetLocation[] = [
+    ...[
+      [".agents/skills", "Shared agent skills"],
+      [".hermes/skills", "Hermes skills"],
+      [".skillclaw/shared/default/skills", "SkillClaw shared skills"]
+    ].map(([location, reason]) => ({ path: path.join(home, location), kind: "skill-root", reason })),
+    { path: path.join(home, ".codex/config.toml"), kind: "toml-config", reason: "Codex user config" },
     {
       path: path.join(home, ".claude", "skills"),
       kind: "skill-root",
@@ -42,6 +48,7 @@ export function getDefaultTargets(cwd: string, home: string, options: DefaultTar
   ];
   const targets: TargetLocation[] = [
     ...(includeHome ? homeTargets : []),
+    { path: path.join(cwd, ".codex/config.toml"), kind: "toml-config", reason: "Codex workspace config" },
     {
       path: path.join(cwd, ".agents", "skills"),
       kind: "skill-root",
