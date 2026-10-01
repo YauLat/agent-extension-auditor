@@ -154,6 +154,40 @@ struct RuntimeLocator {
     }
 }
 
+/// One token per scan; never looks up or terminates another process by name.
+final class ScanCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func launch(_ child: Process) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+        try child.run()
+        process = child
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        if let process, process.isRunning { process.terminate() }
+    }
+
+    func checkCancellation() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+    }
+
+    func finish() {
+        lock.lock()
+        defer { lock.unlock() }
+        process = nil
+    }
+}
+
 struct AuditRunner {
     let locator: RuntimeLocator
 
@@ -165,10 +199,14 @@ struct AuditRunner {
         locator.status()
     }
 
-    func scan(_ request: ScanRequest) async throws -> ScanReport {
-        try await Task.detached(priority: .userInitiated) {
-            try scanSynchronously(request)
-        }.value
+    func scan(_ request: ScanRequest, cancellation: ScanCancellation = ScanCancellation()) async throws -> ScanReport {
+        try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                try scanSynchronously(request, cancellation: cancellation)
+            }.value
+        } onCancel: {
+            cancellation.cancel()
+        }
     }
 
     func planSourceRepair(path: String, source: String) async throws -> RepairPlan {
@@ -254,7 +292,9 @@ struct AuditRunner {
         }.value
     }
 
-    private func scanSynchronously(_ request: ScanRequest) throws -> ScanReport {
+    private func scanSynchronously(_ request: ScanRequest, cancellation: ScanCancellation) throws -> ScanReport {
+        try cancellation.checkCancellation()
+        defer { cancellation.finish() }
         let status = locator.status()
         guard let nodeURL = status.nodeURL else {
             throw AuditRunnerError.nodeMissing
@@ -275,11 +315,14 @@ struct AuditRunner {
         process.standardError = FileHandle.nullDevice
 
         do {
-            try process.run()
+            try cancellation.launch(process)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw AuditRunnerError.launchFailed
         }
         process.waitUntilExit()
+        try cancellation.checkCancellation()
 
         // Incomplete scans still contain useful findings and coverage diagnostics.
         guard [0, 3, 4].contains(process.terminationStatus) else {

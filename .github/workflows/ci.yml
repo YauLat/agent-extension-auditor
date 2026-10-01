@@ -19,6 +19,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - run: node scripts/evaluate-rules.mjs evaluation
       - run: npm run build
 
   macos:
@@ -38,6 +39,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: swift test --package-path apps/macos
       - name: Package native app
         env:

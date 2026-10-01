@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-10-01 (local source; unpublished)
+
+- Index nearest skill ownership and finding deduplication for large libraries; preserve deterministic findings and asset hashes.
+- Add reproducible scale benchmarks and a frozen synthetic rule evaluation corpus with calibration/evaluation splits.
+- Recognize bounded Chinese documented prohibitions and both orderings of private-data transmission requests; ruleset 2026-10-01.2 requires baseline review.
+- Add native first-use folder/scope controls, elapsed scan status and cancellation that preserves the last report.
+- Add a five-person first-use and seven-day return protocol; human validation remains pending.
+
 ## 0.3.0 — 2026-10-01 (local source; unpublished)
 
 - Replace parser source excerpts with fixed diagnostics; mark invalid configuration as incomplete.

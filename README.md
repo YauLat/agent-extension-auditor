@@ -41,7 +41,9 @@ It is not an antivirus engine and does not claim an extension is safe or malicio
 
 ## Source version and release status
 
-This checkout is **0.3.0**. The changes below are available from source; this version is not yet published to npm or as a signed/notarized GitHub release. An npm install can therefore return an earlier public version. Local Mac packages are ad-hoc signed and still require Node.js 20+.
+This checkout is **0.3.1**. The changes below are available from source; this version is not yet published to npm or as a signed/notarized GitHub release. An npm install can therefore return an earlier public version. Local Mac packages are ad-hoc signed and still require Node.js 20+.
+
+Reproducible [performance and rule evaluation](docs/evaluation.md) and a [first-use validation protocol](docs/first-use-validation.md) are included. Synthetic rule results are regression evidence, not a general accuracy or safety score.
 
 ## Install The CLI
 
@@ -246,7 +248,7 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "schemaVersion": 2,
   "privacy": {
     "telemetry": false,

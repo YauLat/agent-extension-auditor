@@ -82,7 +82,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const scannedLocations = await buildScannedLocations(targets, home);
   const context: ScanContext = {
     cwd, home, maxFileBytes, maxDepth, pathFilter, reader,
-    inventory: [], findings: [], processed: new Set()
+    inventory: [], findings: [], findingIDs: new Set(), findingOccurrences: new Map(), processed: new Set()
   };
   // Discover all aliases before analysis so canonical assets retain every agent association.
   const discovered = new Map<TargetLocation, DiscoveredFile[]>();
@@ -158,6 +158,8 @@ interface ScanContext {
   pathFilter: ScanPathFilter;
   inventory: InventoryItem[];
   findings: Finding[];
+  findingIDs: Set<string>;
+  findingOccurrences: Map<string, number>;
   reader: ScanReader;
   processed: Set<string>;
 }
@@ -183,15 +185,40 @@ async function buildScannedLocations(targets: TargetLocation[], home: string): P
 
 async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Promise<void> {
   const skills = files.filter((file) => [...file.aliases].some((alias) => path.basename(alias) === "SKILL.md"));
-  // The closest SKILL.md owns nested files; no double-reporting for nested skills.
-  const owner = (filePath: string) => skills.filter((skill) => isInside(filePath, path.dirname(skill.path)))
-    .sort((a, b) => b.path.length - a.path.length)[0];
+  // Resolve each file's nearest owning skill once, independent of library size.
+  const skillByDirectory = new Map<string, DiscoveredFile>();
+  for (const skill of skills) {
+    const directory = path.dirname(skill.path);
+    // Preserve first-discovered ownership when aliases resolve into one directory.
+    if (!skillByDirectory.has(directory)) skillByDirectory.set(directory, skill);
+  }
+  const pluginByDirectory = new Map(context.inventory.filter(item => item.type === "plugin").map(item => [item.path, item]));
+  const closest = <T>(directory: string, index: Map<string, T>): T | undefined => {
+    let current = directory;
+    while (true) {
+      const found = index.get(current);
+      if (found) return found;
+      const parent = path.dirname(current);
+      if (parent === current) return undefined;
+      current = parent;
+    }
+  };
+  const filesBySkill = new Map<DiscoveredFile, DiscoveredFile[]>();
+  for (const candidate of files) {
+    const owner = closest(path.dirname(candidate.path), skillByDirectory);
+    if (owner && candidate.path !== owner.path) {
+      const owned = filesBySkill.get(owner) ?? [];
+      owned.push(candidate);
+      filesBySkill.set(owner, owned);
+    }
+  }
   for (const file of skills) {
     const skillFile = file.path;
     if (context.processed.has(skillFile)) continue;
     context.processed.add(skillFile);
     const content = await context.reader.read(skillFile);
     if (content === undefined) continue;
+    const owningPlugin = closest(path.dirname(skillFile), pluginByDirectory);
     const item: InventoryItem = {
       id: stableId("skill", skillFile), type: "skill",
       name: parseFrontmatterName(content) ?? path.basename(path.dirname(skillFile)),
@@ -200,8 +227,7 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       aliases: [...file.aliases].map((alias) => toDisplayPath(alias, context.home)).sort(),
       agents: [...file.agents].sort(),
       metadata: { bytes: Buffer.byteLength(content, "utf8"),
-        ...(context.inventory.filter(p => p.type === "plugin" && isInside(skillFile, p.path)).sort((a,b) => b.path.length-a.path.length)[0]
-          ? { pluginId: context.inventory.filter(p => p.type === "plugin" && isInside(skillFile, p.path)).sort((a,b) => b.path.length-a.path.length)[0].id } : {}) },
+        ...(owningPlugin ? { pluginId: owningPlugin.id } : {}) },
       contentHash: hashAssetParts([["SKILL.md", content, context.reader.mode(skillFile) ?? 0]])
     };
     context.inventory.push(item);
@@ -212,7 +238,7 @@ async function scanSkillRoot(files: DiscoveredFile[], context: ScanContext): Pro
       itemId: item.id, message: `Skill file is larger than ${OVERSIZED_SKILL_BYTES} bytes.`
     });
     detectTextPatterns(content, skillFile, context, item.id);
-    for (const bundled of files.filter((candidate) => candidate.path !== skillFile && owner(candidate.path) === file)) {
+    for (const bundled of filesBySkill.get(file) ?? []) {
       if (context.processed.has(bundled.path)) continue;
       context.processed.add(bundled.path);
       if (!looksLikeTextFile(bundled.path)) {
@@ -598,7 +624,7 @@ function detectTextPatterns(content: string, filePath: string, context: ScanCont
     });
   }
   if (evidence.kind === "documented") {
-    addRegexFinding(content, /\b(?:ignore|bypass|override)\b[^\n]{0,100}\b(?:instructions|safety|safeguards)\b[\s\S]{0,320}\b(?:private|secret|credential|credentials|token)\b[\s\S]{0,160}\b(?:send|upload|post|exfiltrate)\b/i,
+    addRegexFinding(content, /\b(?:ignore|bypass|override)\b[^\n]{0,100}\b(?:instructions|safety|safeguards)\b[\s\S]{0,320}?(?:\b(?:private|secrets?|credentials?|tokens?)\b[\s\S]{0,160}\b(?:send|upload|post|exfiltrate)\b|\b(?:send|upload|post|exfiltrate)\b[\s\S]{0,160}\b(?:private|secrets?|credentials?|tokens?)\b)/i,
       context, "PROMPT_INJECTION_EXFILTRATION", filePath, { itemId, message: "Text combines instruction bypass with a request to transmit private data. Review surrounding context; this is a bounded heuristic.", evidence });
   }
   resetRegexes();
@@ -617,9 +643,9 @@ function addRegexFinding(
   let emitted = 0;
   while ((match = matcher.exec(content)) && emitted < 20) {
     const lineStart = content.lastIndexOf("\n", match.index - 1) + 1;
-    const prefix = content.slice(lineStart, match.index).split(/[.!?]\s+/).at(-1) ?? "";
+    const prefix = content.slice(lineStart, match.index).split(/[.!?]\s+|[。！？；;]/).at(-1) ?? "";
     const prohibited = details.evidence.kind === "documented"
-      && /(?:^|[\s>*-])(?:never|do not|don't|must not|avoid|禁止|不可|不要)\b[^;\n]{0,70}$/i.test(prefix);
+      && /(?:^|[\s>*-])(?:(?:never|do not|don't|must not|avoid)\b|禁止|不可|不要)[^;\n]{0,70}$/i.test(prefix);
     addFinding(context, ruleId, filePath, {
       itemId: details.itemId, line: getLineNumber(content, match.index),
       message: prohibited ? "Documented prohibition contains this pattern; retained for context, not treated as an execution instruction." : details.message,
@@ -685,13 +711,17 @@ function addFinding(
 ): void {
   const rule = getRule(ruleId);
   const id = stableId("finding", ruleId, filePath, details.keyPath ?? "", String(details.line ?? ""), details.itemId ?? "", details.severity ?? "");
-  if (context.findings.some((finding) => finding.id === id)) return;
+  if (context.findingIDs.has(id)) return;
+  context.findingIDs.add(id);
+  const occurrenceKey = JSON.stringify([ruleId, filePath, details.itemId]);
+  const occurrence = context.findingOccurrences.get(occurrenceKey) ?? 0;
+  context.findingOccurrences.set(occurrenceKey, occurrence + 1);
   context.findings.push({
     id,
     ruleId: rule.id,
-    severity: details.severity ?? (context.inventory.find(item => item.id === details.itemId)?.metadata?.configuredEnabled === false && ruleId === "MCP_STDIO_COMMAND" ? "medium" : rule.severity),
+    severity: details.severity ?? (ruleId === "MCP_STDIO_COMMAND" && context.inventory.find(item => item.id === details.itemId)?.metadata?.configuredEnabled === false ? "medium" : rule.severity),
     fingerprint: stableId("finding", ruleId, filePath, details.keyPath ?? "", details.itemId ?? "", details.severity ?? rule.severity,
-      String(context.findings.filter(f => f.ruleId === ruleId && f.location.path === filePath && f.itemId === details.itemId).length)),
+      String(occurrence)),
     title: rule.title,
     message: details.message,
     itemId: details.itemId,

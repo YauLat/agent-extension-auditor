@@ -92,11 +92,7 @@ struct OverviewView: View {
                 .frame(maxWidth: 1440, alignment: .leading)
             }
         } else {
-            EmptyStateView(
-                title: store.lastError == nil ? (store.language == .zhHant ? "準備開始檢視" : "Ready to review") : text(.scanFailed, language: store.language),
-                detail: store.lastError == nil ? (store.language == .zhHant ? "先選擇資料夾及掃描範圍，再按立即掃描。下載的套件可在設定中開啟套件模式。" : "Choose a folder and scope, then click Scan Now. For a downloaded package, enable package mode in Settings.") : store.localizedError(),
-                symbol: "shield.lefthalf.filled"
-            )
+            FirstScanView()
         }
     }
 

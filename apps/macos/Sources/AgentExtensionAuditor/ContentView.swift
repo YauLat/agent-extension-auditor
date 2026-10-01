@@ -19,9 +19,19 @@ struct ContentView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.selectedSection)
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .top) {
-                if let report = store.report {
-                    CoverageBanner(report: report, language: store.language) {
-                        store.selectedSection = .locations
+                VStack(spacing: 0) {
+                    if let started = store.scanStartedAt {
+                        TimelineView(.periodic(from: started, by: 1)) { context in
+                            Text(store.language == .zhHant ? "正在讀取及檢查本機檔案 · 已用 \(Int(context.date.timeIntervalSince(started))) 秒" : "Reading and reviewing local files · \(Int(context.date.timeIntervalSince(started))) seconds elapsed")
+                                .font(.caption).padding(8)
+                        }
+                    } else if !store.scanMessage.isEmpty {
+                        Text(store.scanMessage).font(.caption).padding(8)
+                    }
+                    if let report = store.report {
+                        CoverageBanner(report: report, language: store.language) {
+                            store.selectedSection = .locations
+                        }
                     }
                 }
             }
@@ -82,23 +92,24 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: chooseWorkspace) {
+            Button(action: store.chooseWorkspace) {
                 Label(store.workspaceURL.lastPathComponent, systemImage: "folder")
                     .lineLimit(1)
             }
             .help(text(.chooseFolder, language: store.language))
+            .disabled(store.isScanning || store.baselineBusy)
 
             Toggle(
                 text(.includeHome, language: store.language),
                 isOn: Binding(
-                    get: { store.includeHome },
+                    get: { store.includeHome && !store.directPackage },
                     set: { store.setIncludeHome($0) }
                 )
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .help(text(.includeHome, language: store.language))
-            .disabled(store.directPackage || store.isScanning)
+            .disabled(store.directPackage || store.isScanning || store.baselineBusy)
 
             Menu {
                 ForEach(AppLanguage.allCases) { language in
@@ -116,6 +127,10 @@ struct ContentView: View {
                 Label(store.language.displayName, systemImage: "globe")
             }
 
+            if store.isScanning {
+                Button(store.language == .zhHant ? "取消掃描" : "Cancel scan", action: store.cancelScan)
+            }
+
             Button {
                 Task { await store.scan() }
             } label: {
@@ -127,21 +142,9 @@ struct ContentView: View {
                     Label(text(.scanNow, language: store.language), systemImage: "arrow.clockwise")
                 }
             }
-            .disabled(store.isScanning)
+            .disabled(store.isScanning || store.baselineBusy)
             .keyboardShortcut("r", modifiers: .command)
         }
     }
 
-    private func chooseWorkspace() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.directoryURL = store.workspaceURL
-        panel.prompt = text(.chooseFolder, language: store.language)
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        store.workspaceURL = url
-    }
 }

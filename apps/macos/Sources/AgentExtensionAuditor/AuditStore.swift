@@ -16,11 +16,20 @@ final class AuditStore: ObservableObject {
     @Published var selectedInventoryID: String?
     @Published var selectedFindingID: String?
     @Published var activeRepairFinding: Finding?
-    @Published var workspaceURL: URL
-    @Published var directPackage = false
-    @Published var includeHome: Bool
+    @Published var workspaceURL: URL {
+        didSet { if workspaceURL != oldValue { invalidateBaselineReview() } }
+    }
+    @Published var directPackage = false {
+        didSet { if directPackage != oldValue { invalidateBaselineReview() } }
+    }
+    @Published var includeHome: Bool {
+        didSet { if includeHome != oldValue { invalidateBaselineReview() } }
+    }
     @Published var language: AppLanguage
     @Published var isScanning = false
+    @Published var scanStartedAt: Date?
+    @Published var scanMessage = ""
+    private var scanCancellation: ScanCancellation?
     @Published var lastError: AuditRunnerError?
     @Published private(set) var runtimeStatus: RuntimeStatus
     @Published private(set) var windowWidth: CGFloat = 1_280
@@ -44,21 +53,43 @@ final class AuditStore: ObservableObject {
     }
 
     func scan() async {
-        guard !isScanning else { return }
+        guard !isScanning && !baselineBusy else { return }
         isScanning = true
         lastError = nil
-        defer { isScanning = false }
+        scanMessage = ""
+        scanStartedAt = Date()
+        let cancellation = ScanCancellation()
+        scanCancellation = cancellation
+        defer { isScanning = false; scanStartedAt = nil; scanCancellation = nil }
 
         do {
-            let result = try await runner.scan(ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage))
+            let result = try await runner.scan(ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage), cancellation: cancellation)
+            try cancellation.checkCancellation()
             applyReport(result)
             runtimeStatus = runner.runtimeStatus()
+        } catch is CancellationError {
+            scanMessage = language == .zhHant ? "掃描已取消；保留上一份報告。" : "Scan cancelled; the previous report is unchanged."
         } catch let error as AuditRunnerError {
             lastError = error
             runtimeStatus = runner.runtimeStatus()
         } catch {
             lastError = .launchFailed
         }
+    }
+
+    func cancelScan() { scanCancellation?.cancel() }
+
+    func chooseWorkspace() {
+        guard !isScanning && !baselineBusy else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.directoryURL = workspaceURL
+        panel.prompt = text(.chooseFolder, language: language)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        workspaceURL = url
     }
 
     func setLanguage(_ newLanguage: AppLanguage) {
@@ -82,6 +113,7 @@ final class AuditStore: ObservableObject {
     }
 
     func applyReport(_ newReport: ScanReport) {
+        invalidateBaselineReview()
         report = newReport
         rebuildFindingCache(from: newReport)
         selectedInventoryID = nil
@@ -169,6 +201,12 @@ final class AuditStore: ObservableObject {
             return inventory(for: type, ignoringSeverity: true).flatMap { findings(for: $0) }
         }
         return findings(ignoringSeverity: true)
+    }
+
+    private func invalidateBaselineReview() {
+        baselineReview = nil
+        baselineRequest = nil
+        baselineMessage = ""
     }
 
     var canAcceptBaseline: Bool {

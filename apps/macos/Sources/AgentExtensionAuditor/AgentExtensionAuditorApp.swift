@@ -18,7 +18,7 @@ struct AgentExtensionAuditorApp: App {
                     Task { await store.scan() }
                 }
                 .keyboardShortcut("r", modifiers: .command)
-                .disabled(store.isScanning)
+                .disabled(store.isScanning || store.baselineBusy)
             }
         }
     }

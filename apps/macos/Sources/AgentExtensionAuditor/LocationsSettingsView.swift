@@ -90,17 +90,18 @@ struct SettingsView: View {
                             .font(.callout.monospaced())
                             .textSelection(.enabled)
                         Toggle(store.language == .zhHant ? "直接檢查所選資料夾的套件" : "Inspect selected folder as a package", isOn: $store.directPackage)
+                            .disabled(store.isScanning || store.baselineBusy)
                         Text(store.language == .zhHant ? "套件模式會檢查所選資料夾內的支援文字與腳本，不包含個人目錄。先選資料夾，再重新掃描。" : "Package mode inspects supported text and scripts inside the selected folder, excluding Home. Choose a folder, then rescan.")
                             .font(.caption).foregroundStyle(.secondary)
                         Toggle(
                             text(.includeHome, language: store.language),
                             isOn: Binding(
-                                get: { store.includeHome },
+                                get: { store.includeHome && !store.directPackage },
                                 set: { store.setIncludeHome($0) }
                             )
                         )
                         .toggleStyle(.switch)
-                        .disabled(store.directPackage)
+                        .disabled(store.directPackage || store.isScanning || store.baselineBusy)
                     }
                 }
 

@@ -1,6 +1,6 @@
 {
   "name": "agent-extension-auditor",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local-first security auditor for AI agent skills, plugins, MCP servers, hooks, configs, and packages, with terminal and static HTML review interfaces.",
   "license": "MIT",
   "repository": {
@@ -32,7 +32,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit --pretty false",
     "test": "npm run build && vitest run",
-    "prepublishOnly": "npm run lint && npm test && npm run build"
+    "prepublishOnly": "npm run lint && npm test && npm run build",
+    "benchmark": "npm run build && node scripts/benchmark.mjs",
+    "evaluate:rules": "npm run build && node scripts/evaluate-rules.mjs evaluation"
   },
   "keywords": [
     "agent",
