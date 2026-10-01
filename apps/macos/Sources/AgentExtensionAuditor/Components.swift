@@ -113,6 +113,8 @@ struct SeverityBadge: View {
 }
 
 struct SeverityFilterBar: View {
+    var type: InventoryType? = nil
+    private var scopedFindings: [Finding] { store.severityScope(for: type) }
     @EnvironmentObject private var store: AuditStore
 
     var body: some View {
@@ -120,13 +122,13 @@ struct SeverityFilterBar: View {
             HStack(spacing: 8) {
                 filterButton(
                     title: text(.all, language: store.language),
-                    count: store.report?.summary.findings.total ?? 0,
+                    count: scopedFindings.count,
                     severity: nil
                 )
                 ForEach(Severity.allCases) { severity in
                     filterButton(
                         title: severity.label(language: store.language),
-                        count: store.report?.summary.findings.count(for: severity) ?? 0,
+                        count: scopedFindings.filter { $0.severity == severity }.count,
                         severity: severity
                     )
                 }

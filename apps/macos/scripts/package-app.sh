@@ -121,7 +121,7 @@ done
 
 cp "$APP_ROOT/Supporting/Info.plist" "$CONTENTS_DIR/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$CONTENTS_DIR/Info.plist"
-ditto "$REPO_ROOT/dist" "$RESOURCES_DIR/agent-audit/dist"
+node "$REPO_ROOT/scripts/package-runtime.mjs" "$RESOURCES_DIR/agent-audit"
 cp "$REPO_ROOT/PRIVACY.md" "$RESOURCES_DIR/PRIVACY.md"
 cp "$REPO_ROOT/LICENSE" "$RESOURCES_DIR/LICENSE"
 

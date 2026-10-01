@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 export function expandHome(inputPath: string, home: string): string {
   if (inputPath === "~") {
@@ -23,9 +24,5 @@ export function toDisplayPath(inputPath: string, home: string): string {
 }
 
 export function stableId(...parts: string[]): string {
-  return parts
-    .join(":")
-    .replace(/[^a-zA-Z0-9_.:-]+/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 180);
+  return `${parts[0]}:${createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24)}`;
 }

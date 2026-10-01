@@ -4,6 +4,10 @@ import Foundation
 
 @MainActor
 final class AuditStore: ObservableObject {
+    @Published var baselineReview: BaselineReview?
+    @Published var baselineMessage = ""
+    @Published var baselineBusy = false
+    private var baselineRequest: ScanRequest?
     @Published var report: ScanReport?
     @Published var selectedSection: SidebarSection = .overview
     @Published var selectedSeverity: Severity?
@@ -13,6 +17,7 @@ final class AuditStore: ObservableObject {
     @Published var selectedFindingID: String?
     @Published var activeRepairFinding: Finding?
     @Published var workspaceURL: URL
+    @Published var directPackage = false
     @Published var includeHome: Bool
     @Published var language: AppLanguage
     @Published var isScanning = false
@@ -45,7 +50,7 @@ final class AuditStore: ObservableObject {
         defer { isScanning = false }
 
         do {
-            let result = try await runner.scan(ScanRequest(rootURL: workspaceURL, includeHome: includeHome))
+            let result = try await runner.scan(ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage))
             applyReport(result)
             runtimeStatus = runner.runtimeStatus()
         } catch let error as AuditRunnerError {
@@ -83,7 +88,7 @@ final class AuditStore: ObservableObject {
         selectedFindingID = nil
     }
 
-    func findings(for type: InventoryType? = nil) -> [Finding] {
+    func findings(for type: InventoryType? = nil, ignoringSeverity: Bool = false) -> [Finding] {
         guard let report else { return [] }
         let categoryItems = type.map { inventoryType in
             report.inventory.filter { $0.type == inventoryType }
@@ -102,7 +107,7 @@ final class AuditStore: ObservableObject {
                     return false
                 }
             }
-            if let selectedSeverity, finding.severity != selectedSeverity {
+            if !ignoringSeverity, let selectedSeverity, finding.severity != selectedSeverity {
                 return false
             }
             if let selectedRuleID, finding.ruleId != selectedRuleID {
@@ -134,14 +139,14 @@ final class AuditStore: ObservableObject {
         findingsByItemID[item.id] ?? []
     }
 
-    func inventory(for type: InventoryType) -> [InventoryItem] {
+    func inventory(for type: InventoryType, ignoringSeverity: Bool = false) -> [InventoryItem] {
         guard let report else { return [] }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         return report.inventory.filter { item in
             guard item.type == type else { return false }
             let itemFindings = findings(for: item)
-            if let selectedSeverity, !itemFindings.contains(where: { $0.severity == selectedSeverity }) {
+            if !ignoringSeverity, let selectedSeverity, !itemFindings.contains(where: { $0.severity == selectedSeverity }) {
                 return false
             }
             guard !query.isEmpty else { return true }
@@ -156,6 +161,47 @@ final class AuditStore: ObservableObject {
             }
         }.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    func severityScope(for type: InventoryType? = nil) -> [Finding] {
+        if let type {
+            return inventory(for: type, ignoringSeverity: true).flatMap { findings(for: $0) }
+        }
+        return findings(ignoringSeverity: true)
+    }
+
+    var canAcceptBaseline: Bool {
+        baselineReview?.canAccept == true && !baselineBusy && !isScanning
+            && baselineRequest == ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage)
+    }
+
+    func reviewBaseline() async {
+        guard !baselineBusy && !isScanning else { return }
+        baselineBusy = true
+        baselineReview = nil
+        baselineMessage = ""
+        defer { baselineBusy = false }
+        let request = ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage)
+        do {
+            baselineReview = try await runner.reviewBaseline(request)
+            baselineRequest = request
+        } catch {
+            baselineMessage = language == .zhHant ? "無法建立完整比較；請先處理覆蓋率、路徑或基準相容性問題。" : "Cannot prepare a complete review. Check coverage, paths and baseline compatibility."
+        }
+    }
+
+    func acceptBaseline() async {
+        guard canAcceptBaseline, let review = baselineReview, let request = baselineRequest else { return }
+        baselineBusy = true
+        defer { baselineBusy = false }
+        do {
+            try await runner.acceptBaseline(request, review: review)
+            baselineMessage = language == .zhHant ? "已儲存人工檢視基準；這不代表擴充已獲安全認證。" : "Manual review baseline saved. This is not a safety certification."
+            baselineReview = nil
+        } catch {
+            baselineReview = nil
+            baselineMessage = language == .zhHant ? "未接受變更。檔案、基準或覆蓋率可能已改變；請重新比較。" : "Changes were not accepted. Files, baseline or coverage may have changed; compare again."
         }
     }
 

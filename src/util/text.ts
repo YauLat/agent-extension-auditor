@@ -17,7 +17,8 @@ export function commandName(command: string): string {
 }
 
 export function looksLikeTextFile(filePath: string): boolean {
-  return /\.(json|jsonc|md|mdx|ya?ml|toml|txt|js|mjs|cjs|ts|tsx|sh|bash|zsh)$/i.test(filePath);
+  return /\.(json|jsonc|md|mdx|ya?ml|toml|txt|js|jsx|mjs|cjs|ts|tsx|sh|bash|zsh|py|rb|ps1|fish|cfg|ini|xml|html|css)$/i.test(filePath)
+    || /(?:^|[\\/])(?:Dockerfile|Makefile|\.env(?:\.[\w-]+)?)$/i.test(filePath);
 }
 
 export function parseFrontmatterName(content: string): string | undefined {
@@ -65,6 +66,6 @@ export function sanitizePublicSource(value: string | undefined): string | undefi
 }
 
 export function sanitizeJsonError(_error: unknown): string {
-  // Native parser messages may contain excerpts with credentials.
+  // Parser errors can quote credentials or entire source lines. Never copy them.
   return "Invalid JSON";
 }

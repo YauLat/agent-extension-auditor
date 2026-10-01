@@ -18,6 +18,13 @@ struct ContentView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.selectedSection)
             .toolbar { toolbarContent }
+            .safeAreaInset(edge: .top) {
+                if let report = store.report {
+                    CoverageBanner(report: report, language: store.language) {
+                        store.selectedSection = .locations
+                    }
+                }
+            }
         }
         .frame(minWidth: 940, minHeight: 660)
         .background {
@@ -29,11 +36,10 @@ struct ContentView: View {
                     }
             }
         }
-        .task { await store.scanIfNeeded() }
-        .onChange(of: store.selectedSection) { _, _ in
+        .onChange(of: store.selectedSection) { _, newSection in
             store.clearFilters()
             store.selectedInventoryID = nil
-            store.selectedFindingID = nil
+            if newSection != .findings { store.selectedFindingID = nil }
         }
         .sheet(item: $store.activeRepairFinding) { finding in
             GuidedRepairSheet(finding: finding)
@@ -55,7 +61,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var selectedContent: some View {
-        if store.report == nil && store.isScanning {
+        if store.report == nil && store.isScanning && store.selectedSection != .settings {
             LoadingStateView(language: store.language)
         } else {
             switch store.selectedSection {
@@ -92,6 +98,7 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
             .help(text(.includeHome, language: store.language))
+            .disabled(store.directPackage || store.isScanning)
 
             Menu {
                 ForEach(AppLanguage.allCases) { language in
@@ -136,6 +143,5 @@ struct ContentView: View {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         store.workspaceURL = url
-        Task { await store.scan() }
     }
 }

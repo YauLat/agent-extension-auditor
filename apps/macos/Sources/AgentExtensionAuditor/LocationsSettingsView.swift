@@ -13,6 +13,10 @@ struct LocationsView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
+            if let coverage = store.report?.coverage {
+                CoverageDetails(coverage: coverage, language: store.language)
+            }
+
             if let locations = store.report?.scannedLocations, !locations.isEmpty {
                 List(locations) { location in
                     HStack(alignment: .top, spacing: 12) {
@@ -85,6 +89,9 @@ struct SettingsView: View {
                         Text(store.workspaceURL.path)
                             .font(.callout.monospaced())
                             .textSelection(.enabled)
+                        Toggle(store.language == .zhHant ? "直接檢查所選資料夾的套件" : "Inspect selected folder as a package", isOn: $store.directPackage)
+                        Text(store.language == .zhHant ? "套件模式會檢查所選資料夾內的支援文字與腳本，不包含個人目錄。先選資料夾，再重新掃描。" : "Package mode inspects supported text and scripts inside the selected folder, excluding Home. Choose a folder, then rescan.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Toggle(
                             text(.includeHome, language: store.language),
                             isOn: Binding(
@@ -93,6 +100,7 @@ struct SettingsView: View {
                             )
                         )
                         .toggleStyle(.switch)
+                        .disabled(store.directPackage)
                     }
                 }
 

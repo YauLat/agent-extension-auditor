@@ -25,7 +25,7 @@ export interface FindingLocation {
   keyPath?: string;
 }
 
-export type EvidenceKind = "documented" | "configured" | "metadata";
+export type EvidenceKind = "documented" | "code" | "configured" | "metadata";
 export type EvidenceConfidence = "medium" | "high";
 
 export interface FindingEvidence {
@@ -43,6 +43,8 @@ export interface RemediationDescriptor {
 }
 
 export interface Finding {
+  id?: string;
+  fingerprint?: string;
   ruleId: string;
   severity: Severity;
   title: string;
@@ -61,6 +63,10 @@ export interface InventoryItem {
   path: string;
   displayPath: string;
   source?: string;
+  /** SHA-256 of the inspected asset content. It never contains source text. */
+  contentHash?: string;
+  aliases?: string[];
+  agents?: string[];
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -85,6 +91,10 @@ export interface ScanSummary {
 }
 
 export interface ScanReport {
+  /** Absent in legacy reports. Tool version and report schema evolve independently. */
+  schemaVersion?: 2;
+  coverage?: ScanCoverage;
+  filters?: { minSeverity?: Severity; hiddenFindings: number };
   tool: "agent-audit";
   version: string;
   generatedAt: string;
@@ -100,6 +110,7 @@ export interface ScanReport {
 }
 
 export interface ScanOptions {
+  paths?: string[];
   cwd?: string;
   home?: string;
   generatedAt?: Date;
@@ -114,4 +125,34 @@ export interface TargetLocation {
   path: string;
   kind: string;
   reason: string;
+  agent?: string;
+}
+
+export type ScanStatus = "complete" | "partial" | "failed";
+export type DiagnosticCode = "not_found" | "user_excluded" | "default_excluded" | "size_limit" | "depth_limit"
+  | "access_denied" | "read_failed" | "unsupported_type" | "binary_file" | "parse_failed"
+  | "invalid_config" | "structure_limit" | "symlink_broken" | "symlink_cycle" | "outside_scope";
+export interface ScanDiagnostic {
+  code: DiagnosticCode;
+  path: string;
+  displayPath: string;
+  kind: "file" | "directory" | "target";
+  affectsCompleteness: boolean;
+  message: string;
+}
+export interface ScanCoverage {
+  status: ScanStatus;
+  filesRead: number;
+  filesSkipped: number;
+  directoriesSkipped: number;
+  diagnostics: ScanDiagnostic[];
+  scope: {
+    explicitPaths?: string[];
+    includeHome: boolean;
+    includePaths: string[];
+    excludePaths: string[];
+    defaultExcludedDirectories: string[];
+    maxFileBytes: number;
+    maxDepth: number;
+  };
 }

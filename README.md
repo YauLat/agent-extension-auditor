@@ -25,14 +25,23 @@ It is not an antivirus engine and does not claim an extension is safe or malicio
 
 ## What You Get
 
-- `agent-audit scan` for terminal, Markdown, JSON, and static HTML reports.
+- `agent-audit scan` for terminal, Markdown, JSON, SARIF, and static HTML reports.
 - `agent-audit ui` for a no-browser terminal UI grouped by extension type and severity.
 - A native macOS SwiftUI app with categorized inventory cards and finding inspectors.
 - Categorized HTML reports for large skill libraries.
 - Severity filtering with `critical`, `high`, `medium`, `low`, and `info`.
 - Read-only scanning plus an explicit guided repair for adding user-supplied source metadata to `SKILL.md`.
 - Repair preview, confirmation, content-hash protection, private backup, rescan, and guarded rollback.
+- Scan coverage status and safe diagnostics for unreadable, oversized, excluded, unsupported, or invalid files.
+- Canonical skill aliases, bundled script inspection, and Claude/Codex settings support.
+- Direct package/file inspection with `--path`, optional CI severity gates, and machine-readable errors.
+- Manual local baseline comparison in the CLI and Mac app, with content-bound acceptance.
+- A native top-five review queue and category/search-aware severity counts.
 - Privacy-first defaults: no telemetry, no cloud upload, no account, no secret value printing.
+
+## Source version and release status
+
+This checkout is **0.3.0**. The changes below are available from source; this version is not yet published to npm or as a signed/notarized GitHub release. An npm install can therefore return an earlier public version. Local Mac packages are ad-hoc signed and still require Node.js 20+.
 
 ## Install The CLI
 
@@ -87,6 +96,7 @@ agent-audit scan --format terminal
 agent-audit scan --format markdown --output risk-report.md
 agent-audit scan --format json --output risk-report.json
 agent-audit scan --format html --output risk-report.html
+agent-audit scan --path ./downloaded-skill --format sarif --output findings.sarif --fail-on high
 agent-audit scan --min-severity medium|high|critical
 agent-audit scan --no-home
 agent-audit scan --include .mcp.json --exclude ~/.codex/plugins/cache
@@ -94,14 +104,37 @@ agent-audit ui
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
 agent-audit repair plan --action skill.add-source --path ./SKILL.md --source https://github.com/owner/repository
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
 ```
 
 Useful scan filters:
 
-- `--min-severity medium|high|critical` keeps reports focused on higher-priority findings.
+- `--path <file-or-directory>` explicitly scans a downloaded package, supported configuration, or script; it replaces default discovery and excludes Home. It is repeatable.
+- `--min-severity medium|high|critical` changes report presentation only.
+- `--fail-on medium|high|critical` returns exit 6 when the unfiltered scan reaches that level. Without it, findings alone do not fail a scan.
+- Incomplete coverage returns 3 (partial) or 4 (failed), ahead of severity gates. `--allow-incomplete` is an explicit opt-out, and is never allowed for baseline acceptance.
+- JSON usage/operation failures emit a fixed structured error envelope; exit 1 indicates a command failure.
 - `--no-home` scans only project/workspace locations and skips home-directory agent roots such as `~/.claude` and `~/.codex`.
 - `--include <path>[,<path>...]` limits scanning to matching paths within the default scan locations.
 - `--exclude <path>[,<path>...]` skips matching paths within the default scan locations.
+
+## Review changes locally
+
+```bash
+agent-audit baseline create --path ./downloaded-skill --root ./downloaded-skill
+agent-audit baseline diff --path ./downloaded-skill --root ./downloaded-skill
+agent-audit baseline review --path ./downloaded-skill --root ./downloaded-skill --format json
+# After reviewing the diff, explicitly accept the current state:
+agent-audit baseline accept --path ./downloaded-skill --root ./downloaded-skill --yes
+```
+
+Use the same scope each time. Baselines are private local snapshots of hashes and metadata, not source-file copies or safety certificates. Incomplete scans and incompatible scope/rules cannot be accepted. JSON callers must supply the `reviewedHash` returned by `baseline review` using `--expected-hash`; changes to the files or existing baseline invalidate that approval.
+
+The Mac app opens without automatically scanning a potentially large Home library. In the Mac app, choose a folder, enable package mode in Settings for a downloaded package, and scan. Overview shows coverage and up to five findings to review first. “Compare baseline” previews changes; “Create baseline” or “Accept changes” stores only the state just reviewed. Configuration and static code findings do not prove runtime execution. Source URLs are self-declared and unverified.
+
+The prohibition heuristic recognizes only bounded English negative instructions in documentation; it keeps the observation at informational severity. It never lowers executable script evidence. Prompt-injection detection is a narrow heuristic, not a comprehensive classifier.
 
 ## Guided Repair
 
@@ -114,6 +147,19 @@ agent-audit repair rollback --backup <backup-id> --yes
 ```
 
 Planning is read-only. Apply and rollback require explicit confirmation. The engine rejects symlinks and stale previews, creates a private local backup, preserves file mode, and will not roll back over newer edits. Shell commands, hooks, credentials, network endpoints, package scripts, and write/delete findings remain manual-review only.
+
+## Manual Baseline Review
+
+Use a local baseline to review extension changes between scans. Keep the same scan scope for every command.
+
+```bash
+agent-audit baseline create --no-home
+agent-audit baseline diff --no-home
+agent-audit baseline accept --no-home --yes
+agent-audit baseline delete --yes
+```
+
+The baseline stores content/permission hashes and sanitized finding signatures, not source text, raw commands, credentials, full configuration, or absolute paths. It is written as a private `0600` file and rejects symbolic links and multiply-linked files. On load, derived identity, review, and finding hashes must remain internally consistent; this detects corruption or casual edits but is not a cryptographic signature against a malicious writer. No-follow reads and inode/content guards prevent `accept` or `delete` from silently replacing a concurrent update. The selected baseline file is excluded from the scan so it cannot create its own change event. `accept` and `delete` require `--yes`. A partial or failed scan can show new observations, but it cannot replace the last complete baseline or claim that earlier risks disappeared. If several same-type, same-name assets all change, the diff is partial and leaves them unresolved instead of guessing pairings or reporting false removals. Report schema, ruleset, or scope mismatches are marked incompatible instead of being silently compared.
 
 ## Review Interfaces
 
@@ -158,6 +204,12 @@ Discovery is bounded by the existing file-size, depth, and include/exclude limit
 
 The Codex reader supports a static TOML subset, including tables, dotted/quoted keys, strings, arrays, and inline tables. Invalid or unsupported input produces a generic `metadata.parseError` in the JSON report and omits MCP extraction for that file. It is not a complete TOML validator. Optional inventory metadata records configured enablement and plugin-to-skill associations; the native app displays these states and coverage limits without showing raw parser errors. Older reports remain readable, with unavailable state marked as unknown. Discovery and findings never establish whether an extension is running. Arbitrary manifest-referenced paths and remote manifests are not followed.
 
+The reliability changes on this branch are source-only and are not yet on npm or a signed Mac release. See [the coverage contract](./docs/scan-coverage.md) for exact roots, supported formats, limits, and exit codes.
+
+Additional declared locations include user `~/.agents/skills`, Claude user/project `settings.json`, project `.claude/settings.local.json` and `.claude/skills`, and user/project `.codex/config.toml`. Skill package text files are inspected without executing scripts. Symbolic links are followed only within selected declared roots, and identical canonical skills are counted once.
+
+`scan` and `ui` now return **3 for partial scans** and **4 when an incomplete scope has no readable files**. A report is still produced. Use `--allow-incomplete` only if an existing integration needs legacy exit-0 behavior; the report's coverage status remains unchanged. Findings alone do not change exit codes.
+
 ## What It Detects
 
 - MCP stdio commands
@@ -194,7 +246,8 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.2.2",
+  "version": "0.3.0",
+  "schemaVersion": 2,
   "privacy": {
     "telemetry": false,
     "uploaded": false

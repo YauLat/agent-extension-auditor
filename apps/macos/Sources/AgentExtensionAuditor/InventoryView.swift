@@ -20,7 +20,7 @@ struct InventoryView: View {
                         symbol: type.symbol
                     )
 
-                    SeverityFilterBar()
+                    SeverityFilterBar(type: type)
 
                     if items.isEmpty {
                         EmptyStateView(
@@ -202,7 +202,13 @@ private struct InventoryDetailView: View {
                     .textSelection(.enabled)
 
                 if let source = item.source, !source.isEmpty {
-                    DetailField(title: text(.source, language: store.language), value: source)
+                    DetailField(title: store.language == .zhHant ? "來源（自行聲明，未驗證）" : "Source (self-declared, unverified)", value: source)
+                }
+                if let aliases = item.aliases, aliases.count > 1 {
+                    DetailField(title: store.language == .zhHant ? "安裝位置／別名" : "Install locations / aliases", value: aliases.joined(separator: "\n"), monospaced: true)
+                }
+                if let agents = item.agents, !agents.isEmpty {
+                    DetailField(title: "Agents", value: agents.joined(separator: ", "))
                 }
 
                 DetailField(
@@ -279,6 +285,15 @@ private struct InventoryDetailView: View {
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .auditorGlass(tint: finding.severity.color)
+                            .overlay(alignment: .topTrailing) {
+                                Button {
+                                    store.clearFilters()
+                                    store.selectedFindingID = finding.id
+                                    store.selectedSection = .findings
+                                } label: { Image(systemName: "arrow.up.right.square") }
+                                .help(store.language == .zhHant ? "檢視發現與建議" : "Review finding and recommendation")
+                                .padding(10)
+                            }
                         }
                     }
                 }

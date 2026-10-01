@@ -1,8 +1,10 @@
 import Foundation
+import Darwin
 
 struct ScanRequest: Equatable {
     let rootURL: URL
     let includeHome: Bool
+    var directPackage: Bool = false
 
     func arguments(scannerURL: URL, outputURL: URL) -> [String] {
         var values = [
@@ -12,7 +14,8 @@ struct ScanRequest: Equatable {
             "--output", outputURL.path,
             "--root", rootURL.path
         ]
-        if !includeHome {
+        if directPackage { values += ["--path", rootURL.path] }
+        if !includeHome || directPackage {
             values.append("--no-home")
         }
         return values
@@ -210,6 +213,47 @@ struct AuditRunner {
         }.value
     }
 
+    func reviewBaseline(_ request: ScanRequest) async throws -> BaselineReview {
+        let data = try await baselineCommand(request, operation: "review")
+        return try JSONDecoder().decode(BaselineReview.self, from: data)
+    }
+
+    func acceptBaseline(_ request: ScanRequest, review: BaselineReview) async throws {
+        _ = try await baselineCommand(request, operation: review.exists ? "accept" : "create", expectedHash: review.reviewedHash)
+    }
+
+    private func baselineCommand(_ request: ScanRequest, operation: String, expectedHash: String? = nil) async throws -> Data {
+        try await Task.detached(priority: .userInitiated) {
+            let status = locator.status()
+            guard let node = status.nodeURL else { throw AuditRunnerError.nodeMissing }
+            guard let scanner = status.scannerURL else { throw AuditRunnerError.scannerMissing }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agent-audit-baseline-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let outputURL = directory.appendingPathComponent("response.json")
+            FileManager.default.createFile(atPath: outputURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            let output = try FileHandle(forWritingTo: outputURL)
+            defer { try? output.close() }
+            guard let resolved = realpath(request.rootURL.path, nil) else { throw AuditRunnerError.launchFailed }
+            let canonicalRoot = String(cString: resolved)
+            free(resolved)
+            var arguments = [scanner.path, "baseline", operation, "--format", "json", "--root", canonicalRoot]
+            if request.directPackage { arguments += ["--path", canonicalRoot] }
+            if !request.includeHome || request.directPackage { arguments.append("--no-home") }
+            if let expectedHash { arguments += ["--expected-hash", expectedHash, "--yes"] }
+            let process = Process()
+            process.executableURL = node
+            process.arguments = arguments
+            process.currentDirectoryURL = request.rootURL
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus) }
+            return try Data(contentsOf: outputURL)
+        }.value
+    }
+
     private func scanSynchronously(_ request: ScanRequest) throws -> ScanReport {
         let status = locator.status()
         guard let nodeURL = status.nodeURL else {
@@ -237,7 +281,8 @@ struct AuditRunner {
         }
         process.waitUntilExit()
 
-        guard process.terminationStatus == 0 else {
+        // Incomplete scans still contain useful findings and coverage diagnostics.
+        guard [0, 3, 4].contains(process.terminationStatus) else {
             throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus)
         }
 

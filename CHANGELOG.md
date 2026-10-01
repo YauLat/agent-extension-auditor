@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-01 (local source; unpublished)
+
+- Replace parser source excerpts with fixed diagnostics; mark invalid configuration as incomplete.
+- Add schema version 2, declared scope, bounded-read/skipped counts and explicit partial/failed status across reports and native UI. Legacy reports display unknown coverage.
+- Add shared skills, Claude user/project settings and skills, and Codex TOML configuration.
+- Follow only in-scope symlinks, retain aliases, scan bundled skill text/scripts, and count hook command leaves once.
+- Add stable finding IDs and evidence kind `code`; static evidence does not prove execution.
+- Add scan exit codes 3/4 and `--allow-incomplete` compatibility. Bundle the pinned TOML parser with its license in the Mac app.
+- Add manual local baseline create/diff/accept/delete commands with private hash-only persistence, content/permission-bound review, derived-hash consistency checks, move-aware matching with fail-closed ambiguous identities, self-baseline exclusion, concurrent update guards, and fail-closed schema/rules/scope/coverage gates.
+- Preserve Hermes/SkillClaw discovery and plugin ownership while integrating reliability work.
+- Add explicit `--path`, stable correlation fingerprints, SARIF, structured JSON errors and opt-in `--fail-on` gates.
+- Keep documented prohibitions visible at informational severity, preserve adjacent active instructions, and add bounded prompt-injection/exfiltration detection.
+- Add native baseline preview/create/accept, stale-review protection, top-five next actions, scoped counts, and navigation from assets to findings.
+- Label source metadata as self-declared; distinguish disabled configuration from observed activity.
+- This version has not been published, notarized or deployed.
 
 ## 0.2.2 - 2026-07-11
 

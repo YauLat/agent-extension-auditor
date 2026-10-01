@@ -17,6 +17,11 @@ export const severityLabels: Record<Severity, string> = {
 };
 
 export const rules: RuleDefinition[] = [
+  { id: "PROMPT_INJECTION_EXFILTRATION", severity: "high", title: "Instruction bypass with private data transmission",
+    what_it_detects: "Nearby English instruction-bypass, private-data and transmission language.",
+    why_it_matters: "An extension may attempt to override review rules and disclose private information.",
+    false_positive_notes: "Bounded English heuristic; examples may trigger it and paraphrases or other languages may evade it. This is not a safety verdict.",
+    recommended_action: "Open the indicated text, review the requested data and destination, and remove the instruction or decline activation until its purpose is established." },
   {
     id: "MCP_STDIO_COMMAND",
     severity: "high",

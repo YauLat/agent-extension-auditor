@@ -40,6 +40,7 @@ struct FindingsView: View {
                 }
         }
         .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
+        .onAppear { presentDetailAsSheet = store.selectedFindingID != nil && store.windowWidth < 1_100 }
         .onChange(of: store.selectedFindingID) { _, newValue in
             if newValue != nil {
                 presentDetailAsSheet = store.windowWidth < 1_100
@@ -263,6 +264,7 @@ struct FindingDetailView: View {
         let kind: String
         switch evidence.kind {
         case .documented: kind = text(.documentedBehavior, language: store.language)
+        case .code: kind = store.language == .zhHant ? "程式包含此模式" : "Pattern present in code"
         case .configured: kind = text(.configuredBehavior, language: store.language)
         case .metadata: kind = text(.metadataEvidence, language: store.language)
         }

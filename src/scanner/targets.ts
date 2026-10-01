@@ -9,16 +9,16 @@ export function getDefaultTargets(cwd: string, home: string, options: DefaultTar
   const includeHome = options.includeHome ?? true;
   const workspaceFiles = ["AGENTS.md", "CLAUDE.md", "SOUL.md", "USER.md", "MEMORY.md", ".mcp.json"];
   const homeTargets: TargetLocation[] = [
-    ...[
-      [".agents/skills", "Shared agent skills"],
-      [".hermes/skills", "Hermes skills"],
-      [".skillclaw/shared/default/skills", "SkillClaw shared skills"]
-    ].map(([location, reason]) => ({ path: path.join(home, location), kind: "skill-root", reason })),
-    { path: path.join(home, ".codex/config.toml"), kind: "toml-config", reason: "Codex user config" },
+    { path: path.join(home, ".hermes/skills"), kind: "skill-root", reason: "Hermes skills", agent: "hermes" },
+    { path: path.join(home, ".skillclaw/shared/default/skills"), kind: "skill-root", reason: "SkillClaw shared skills", agent: "shared" },
+    { path: path.join(home, ".agents", "skills"), kind: "skill-root", reason: "Shared agent skills", agent: "shared" },
+    { path: path.join(home, ".claude", "settings.json"), kind: "agent-config", reason: "Claude user settings", agent: "claude" },
+    { path: path.join(home, ".codex", "config.toml"), kind: "toml-config", reason: "Codex user config", agent: "codex" },
     {
       path: path.join(home, ".claude", "skills"),
       kind: "skill-root",
-      reason: "Claude skills"
+      reason: "Claude skills",
+      agent: "claude"
     },
     {
       path: path.join(home, ".claude", "plugins"),
@@ -33,7 +33,8 @@ export function getDefaultTargets(cwd: string, home: string, options: DefaultTar
     {
       path: path.join(home, ".codex", "skills"),
       kind: "skill-root",
-      reason: "Codex skills"
+      reason: "Codex skills",
+      agent: "codex"
     },
     {
       path: path.join(home, ".codex", "plugins", "cache"),
@@ -48,11 +49,15 @@ export function getDefaultTargets(cwd: string, home: string, options: DefaultTar
   ];
   const targets: TargetLocation[] = [
     ...(includeHome ? homeTargets : []),
-    { path: path.join(cwd, ".codex/config.toml"), kind: "toml-config", reason: "Codex workspace config" },
+    { path: path.join(cwd, ".claude", "skills"), kind: "skill-root", reason: "Workspace Claude skills", agent: "claude" },
+    { path: path.join(cwd, ".claude", "settings.json"), kind: "agent-config", reason: "Claude project settings", agent: "claude" },
+    { path: path.join(cwd, ".claude", "settings.local.json"), kind: "agent-config", reason: "Claude local project settings", agent: "claude" },
+    { path: path.join(cwd, ".codex", "config.toml"), kind: "toml-config", reason: "Codex project config", agent: "codex" },
     {
       path: path.join(cwd, ".agents", "skills"),
       kind: "skill-root",
-      reason: "Workspace agent skills"
+      reason: "Workspace agent skills",
+      agent: "shared"
     }
   ];
 

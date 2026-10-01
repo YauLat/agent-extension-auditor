@@ -1,3 +1,4 @@
+import { coverageLines } from "./coverage.js";
 import { sortFindings } from "../rules/definitions.js";
 import type { Finding, InventoryItem, InventoryType, ScanReport, Severity } from "../types.js";
 
@@ -56,8 +57,13 @@ const htmlCopy = {
     medium: "Medium",
     message: "Message",
     missing: "Missing",
-    noFindingsHelp: "The scan did not find review-worthy extension behavior in the selected locations.",
+    noFindingsHelp: "No findings match this report. Check scan coverage and filters before drawing conclusions.",
     noFindingsTitle: "No findings detected",
+    coverage: "Scan coverage",
+    complete: "Declared scope inspected; this is not a safety guarantee.",
+    partial: "Scan incomplete: some locations were not inspected.",
+    failed: "Scan incomplete: no readable files in the affected scope.",
+    unknown: "Legacy report: scan completeness is unknown.",
     noCategoryFindings: "No findings in this category.",
     noImmediateActions: "No immediate next actions.",
     noLocations: "No scanned locations were recorded.",
@@ -126,7 +132,7 @@ const htmlCopy = {
     medium: "中",
     message: "訊息",
     missing: "缺失",
-    noFindingsHelp: "這次掃描在選定位置中沒有發現需要審閱的擴充行為。",
+    noFindingsHelp: "目前報告沒有符合的發現；請先檢查掃描覆蓋範圍及篩選條件。",
     noFindingsTitle: "沒有發現風險項",
     noCategoryFindings: "此分類沒有發現項。",
     noImmediateActions: "目前沒有立即行動項。",
@@ -157,7 +163,12 @@ const htmlCopy = {
     topFindings: "重點發現",
     severityGroups: "按程度分類",
     moreInSeverity: "還有 {count} 項",
-    nextActions: "下一步"
+    nextActions: "下一步",
+    coverage: "掃描覆蓋範圍",
+    complete: "已檢查宣告範圍；這不是安全保證。",
+    partial: "掃描不完整：部分位置未能檢查。",
+    failed: "掃描不完整：受影響範圍沒有可讀檔案。",
+    unknown: "舊版報告：無法確認掃描完整程度。"
   }
 } satisfies Record<Language, Record<string, string>>;
 
@@ -193,6 +204,8 @@ ${renderCss()}
         <div class="privacy-pill" data-i18n="privacyPill">${copy.privacyPill}</div>
       </div>
     </header>
+
+    ${renderCoverage(report)}
 
     <section class="summary-grid" aria-label="Overview risk summary" data-i18n-aria-label="overviewRiskSummary">
       ${renderRiskCards(report)}
@@ -416,7 +429,7 @@ function renderSeverityGroup(type: InventoryType, severity: Severity, findings: 
         return `<li>
           <div>
             <strong><code>${escapeHtml(finding.ruleId)}</code> ${escapeHtml(finding.title)}</strong>
-            <p>${escapeHtml(finding.message)}</p>
+            <p>${escapeHtml(finding.message)}</p><p class="meta">${escapeHtml(evidenceLabel(finding))}</p>
             <code>${escapeHtml(location)}</code>
           </div>
         </li>`;
@@ -593,7 +606,7 @@ function renderFindingRow(finding: Finding, inventoryById: Map<string, Inventory
     <td data-label="${copy.severity}" data-label-key="severity"><span class="badge badge-${finding.severity}" data-i18n-severity="${finding.severity}">${copy[finding.severity]}</span></td>
     <td data-label="${copy.rule}" data-label-key="rule"><code>${escapeHtml(finding.ruleId)}</code></td>
     <td data-label="${copy.title}" data-label-key="title">${escapeHtml(finding.title)}</td>
-    <td data-label="${copy.message}" data-label-key="message">${escapeHtml(finding.message)}</td>
+    <td data-label="${copy.message}" data-label-key="message">${escapeHtml(finding.message)}<p class="meta">${escapeHtml(evidenceLabel(finding))}</p></td>
     <td data-label="${copy.location}" data-label-key="location"><code>${escapeHtml(location)}</code></td>
     <td data-label="${copy.recommendation}" data-label-key="recommendation">${escapeHtml(finding.recommendation)}</td>
   </tr>`;
@@ -1625,4 +1638,20 @@ function renderScript(): string {
 
   applyLanguage(currentLanguage);
 })();`;
+}
+
+function renderCoverage(report: ScanReport): string {
+  const status = report.coverage?.status;
+  const state = status === "complete" || status === "partial" || status === "failed" ? status : "unknown";
+  return `<section class="panel" data-scan-status="${state}" aria-label="Scan coverage">
+    <h2 data-i18n="coverage">${htmlCopy.en.coverage}</h2>
+    <p role="status" data-i18n="${state}">${htmlCopy.en[state]}</p>
+    <details><summary>Scope and diagnostics / 範圍及未檢查原因</summary><ul>
+      ${coverageLines(report).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+    </ul></details>
+  </section>`;
+}
+
+function evidenceLabel(finding: Finding): string {
+  return `Evidence: ${finding.evidence?.kind ?? "unknown"}; execution not observed / 未觀測執行`;
 }

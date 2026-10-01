@@ -16,6 +16,27 @@ final class AgentExtensionAuditorTests: XCTestCase {
         XCTAssertEqual(report.findings.first?.remediation?.mode, .review)
         XCTAssertFalse(report.privacy.telemetry)
         XCTAssertFalse(report.privacy.uploaded)
+        XCTAssertNil(report.coverage, "Legacy reports must not imply complete coverage")
+    }
+
+    func testDecodesCoverageAndCodeEvidence() throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(sampleReport.utf8)) as? [String: Any])
+        object["schemaVersion"] = 2
+        object["coverage"] = [
+            "status": "partial", "filesRead": 1, "filesSkipped": 1, "directoriesSkipped": 0,
+            "scope": ["includeHome": false, "includePaths": [], "excludePaths": [],
+                      "defaultExcludedDirectories": ["node_modules", ".git", "dist"], "maxFileBytes": 524288, "maxDepth": 6] as [String: Any],
+            "diagnostics": [["code": "parse_failed", "displayPath": ".mcp.json",
+                             "message": "Invalid configuration syntax", "affectsCompleteness": true] as [String: Any]]
+        ] as [String: Any]
+        var findings = try XCTUnwrap(object["findings"] as? [[String: Any]])
+        findings[0]["evidence"] = ["kind": "code", "confidence": "medium", "active": "unknown"]
+        object["findings"] = findings
+        let report = try JSONDecoder().decode(ScanReport.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(report.schemaVersion, 2)
+        XCTAssertEqual(report.coverage?.status, "partial")
+        XCTAssertEqual(report.coverage?.diagnostics.first?.code, "parse_failed")
+        XCTAssertEqual(report.findings.first?.evidence?.kind, .code)
     }
 
     func testScanRequestBuildsArgumentsWithoutShellInterpolation() {
@@ -32,6 +53,33 @@ final class AgentExtensionAuditorTests: XCTestCase {
         XCTAssertTrue(arguments.contains("/tmp/project with spaces"))
         XCTAssertTrue(arguments.contains("--no-home"))
         XCTAssertFalse(arguments.contains(where: { $0.contains(";") }))
+    }
+
+    func testDirectPackageScanAlwaysExcludesHome() {
+        let request = ScanRequest(rootURL: URL(fileURLWithPath: "/tmp/package"), includeHome: true, directPackage: true)
+        let arguments = request.arguments(scannerURL: URL(fileURLWithPath: "/tmp/cli.js"), outputURL: URL(fileURLWithPath: "/tmp/report.json"))
+        XCTAssertTrue(arguments.contains("--path"))
+        XCTAssertTrue(arguments.contains("--no-home"))
+        XCTAssertEqual(arguments.filter { $0 == "/tmp/package" }.count, 2)
+    }
+
+    func testNativeBaselineRoundTrip() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aea-native-\(UUID().uuidString)").resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("---\nname: fixture\nsource: https://example.invalid/source\n---\nReference".utf8).write(to: root.appendingPathComponent("SKILL.md"))
+        var repository = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { repository.deleteLastPathComponent() }
+        let scanner = repository.appendingPathComponent("dist/cli.js")
+        var environment = ProcessInfo.processInfo.environment
+        environment["AGENT_AUDIT_CLI_PATH"] = scanner.path
+        let runner = AuditRunner(locator: RuntimeLocator(environment: environment))
+        let request = ScanRequest(rootURL: root, includeHome: false, directPackage: true)
+        let review = try await runner.reviewBaseline(request)
+        XCTAssertFalse(review.exists)
+        do { try await runner.acceptBaseline(request, review: review) } catch { XCTFail(String(reflecting: error)); return }
+        let after = try await runner.reviewBaseline(request)
+        XCTAssertTrue(after.exists)
     }
 
     func testRuntimeLocatorHonorsExplicitLocalPaths() throws {
@@ -80,13 +128,19 @@ final class AgentExtensionAuditorTests: XCTestCase {
         XCTAssertEqual(store.inventory(for: .skill).map(\.name), ["One"])
         XCTAssertEqual(store.findings(for: report.inventory[0]).count, 2)
 
+        XCTAssertEqual(store.severityScope(for: .skill).count, 2)
+        XCTAssertEqual(store.severityScope(for: .plugin).count, 1)
+
         store.selectedSeverity = .critical
         XCTAssertEqual(store.inventory(for: .skill).map(\.name), ["One"])
         XCTAssertTrue(store.inventory(for: .plugin).isEmpty)
+        XCTAssertEqual(store.severityScope(for: .plugin).count, 1)
         XCTAssertEqual(store.findings().map(\.ruleId), ["REMOTE_SCRIPT_EXECUTION"])
 
         store.selectedSeverity = nil
         store.searchText = "package script"
+        XCTAssertEqual(store.severityScope(for: .skill).count, 0)
+        XCTAssertEqual(store.severityScope(for: .plugin).count, 1)
         XCTAssertEqual(store.findings().map(\.ruleId), ["PACKAGE_SCRIPT"])
         XCTAssertEqual(store.inventory(for: .plugin).map(\.name), ["Plugin One"])
 

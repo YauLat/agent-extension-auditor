@@ -14,6 +14,28 @@ struct OverviewView: View {
                     )
 
                     PrivacyStrip(language: store.language)
+                    BaselineReviewView()
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(store.language == .zhHant ? "優先檢視的 5 項發現" : "First 5 findings to review").font(.headline)
+                        ForEach(Array(report.findings.sorted { $0.severity.rank < $1.severity.rank }.prefix(5))) { finding in
+                            Button {
+                                store.clearFilters()
+                                store.selectedFindingID = finding.id
+                                store.selectedSection = .findings
+                            } label: {
+                                HStack(alignment: .top) {
+                                    SeverityBadge(severity: finding.severity, language: store.language)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(finding.title).font(.subheadline.weight(.medium))
+                                        Text(finding.location.displayPath).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        Text(finding.recommendation).font(.caption).lineLimit(2)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.right")
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(16).auditorGlass()
 
                     let incompleteCount = report.inventory.filter(\.hasIncompleteEvidence).count
                     if incompleteCount > 0 {
@@ -71,9 +93,9 @@ struct OverviewView: View {
             }
         } else {
             EmptyStateView(
-                title: text(.noFindings, language: store.language),
-                detail: text(.scanFailed, language: store.language),
-                symbol: "shield.slash"
+                title: store.lastError == nil ? (store.language == .zhHant ? "準備開始檢視" : "Ready to review") : text(.scanFailed, language: store.language),
+                detail: store.lastError == nil ? (store.language == .zhHant ? "先選擇資料夾及掃描範圍，再按立即掃描。下載的套件可在設定中開啟套件模式。" : "Choose a folder and scope, then click Scan Now. For a downloaded package, enable package mode in Settings.") : store.localizedError(),
+                symbol: "shield.lefthalf.filled"
             )
         }
     }
