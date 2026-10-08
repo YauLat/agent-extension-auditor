@@ -17,10 +17,15 @@ export const severityLabels: Record<Severity, string> = {
 };
 
 export const rules: RuleDefinition[] = [
+  { id: "ENV_NETWORK_EXFILTRATION", severity: "high", title: "Environment reference inside an HTTP upload call",
+    what_it_detects: "Direct process.env or os.environ references inside bounded fetch, requests or axios upload calls.",
+    why_it_matters: "Environment variables may contain credentials which a request payload can disclose.",
+    false_positive_notes: "Static call proximity is not proven data flow. Authorized uploads can trigger this; aliases, variables, obfuscation and other clients can evade it.",
+    recommended_action: "Review the complete call, payload and endpoint owner. Remove unrelated environment data and require approval before execution." },
   { id: "PROMPT_INJECTION_EXFILTRATION", severity: "high", title: "Instruction bypass with private data transmission",
-    what_it_detects: "Nearby English instruction-bypass, private-data and transmission language.",
+    what_it_detects: "Nearby English or Traditional/Simplified Chinese instruction-bypass, private-data and transmission language.",
     why_it_matters: "An extension may attempt to override review rules and disclose private information.",
-    false_positive_notes: "Bounded English heuristic; examples may trigger it and paraphrases or other languages may evade it. This is not a safety verdict.",
+    false_positive_notes: "Bounded English/Chinese heuristic; examples may trigger it and paraphrases or other languages may evade it. This is not a safety verdict.",
     recommended_action: "Open the indicated text, review the requested data and destination, and remove the instruction or decline activation until its purpose is established." },
   {
     id: "MCP_STDIO_COMMAND",

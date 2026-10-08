@@ -17,7 +17,9 @@ struct OverviewView: View {
                     BaselineReviewView()
                     VStack(alignment: .leading, spacing: 10) {
                         Text(store.language == .zhHant ? "優先檢視的 5 項發現" : "First 5 findings to review").font(.headline)
-                        ForEach(Array(report.findings.sorted { $0.severity.rank < $1.severity.rank }.prefix(5))) { finding in
+                        Text(store.canFilterChanges ? (store.language == .zhHant ? "先檢視目前資產的新增及修改，再查看全部風險。嚴重程度不變。" : "New and changed current assets come first; all risks remain available. Severity is unchanged.") : (store.language == .zhHant ? "先檢視目前程式與設定；封存、停用及明示示例仍保留全部警告。嚴重程度不變。" : "Current code and configuration come first. Archive, disabled and explicit example findings remain available; severity is unchanged."))
+                            .font(.caption).foregroundStyle(.secondary)
+                        ForEach(store.prioritizedFindings()) { finding in
                             Button {
                                 store.clearFilters()
                                 store.selectedFindingID = finding.id
@@ -28,6 +30,7 @@ struct OverviewView: View {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(finding.title).font(.subheadline.weight(.medium))
                                         Text(finding.location.displayPath).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        Text(finding.reviewLabel(language: store.language)).font(.caption2).foregroundStyle(.secondary)
                                         Text(finding.recommendation).font(.caption).lineLimit(2)
                                     }
                                     Spacer()

@@ -69,6 +69,17 @@ struct RemediationDescriptor: Codable, Equatable {
     let requiresInput: [String]?
 }
 
+struct FindingReview: Codable, Equatable {
+    let context: String
+    let priority: Int
+}
+
+struct FindingExplanation: Codable, Equatable {
+    let detected: String
+    let impact: String
+    let limits: String
+}
+
 struct Finding: Codable, Identifiable, Equatable {
     let ruleId: String
     let severity: Severity
@@ -79,6 +90,35 @@ struct Finding: Codable, Identifiable, Equatable {
     let recommendation: String
     let evidence: FindingEvidence?
     let remediation: RemediationDescriptor?
+    var review: FindingReview? = nil
+    var explanation: FindingExplanation? = nil
+    var scannerID: String? = nil
+    var fingerprint: String? = nil
+    var disposition: FindingDisposition? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case ruleId, severity, title, message, location, itemId, recommendation, evidence, remediation, review, explanation, fingerprint, disposition
+        case scannerID = "id"
+    }
+
+    var reviewPriority: Int { max(0, min(5, review?.priority ?? 0)) }
+
+    static func reviewPrecedes(_ lhs: Finding, _ rhs: Finding) -> Bool {
+        if lhs.reviewPriority != rhs.reviewPriority { return lhs.reviewPriority < rhs.reviewPriority }
+        if lhs.severity.rank != rhs.severity.rank { return lhs.severity.rank < rhs.severity.rank }
+        let order = lhs.location.displayPath.localizedStandardCompare(rhs.location.displayPath)
+        return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+    }
+
+    func reviewLabel(language: AppLanguage) -> String {
+        let zh = language == .zhHant
+        switch review?.context {
+        case "archived": return zh ? "封存路徑 · 執行未知" : "Archive path · execution unknown"
+        case "disabled": return zh ? "設定已停用 · 執行未知" : "Disabled configuration · execution unknown"
+        case "example": return zh ? "明示教學示例 · 保留風險" : "Explicit teaching example · risk retained"
+        default: return zh ? "目前掃描範圍 · 執行未知" : "Current scope · execution unknown"
+        }
+    }
 
     var id: String {
         [

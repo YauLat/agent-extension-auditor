@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Finding review CLI response v2",
+  "type": "object",
+  "properties": {"tool": {"const": "agent-audit"}, "schemaVersion": {"const": 2}},
+  "required": ["tool", "schemaVersion", "operation"],
+  "oneOf": [
+    {"properties": {
+      "operation": {"const": "review.list"}, "coverageStatus": {"enum": ["complete", "partial", "failed"]},
+      "revision": {"$ref": "#/$defs/hash"},
+      "findings": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+        "required": ["findingId", "ruleId", "disposition"], "properties": {
+          "findingId": {"anyOf": [{"$ref": "#/$defs/finding"}, {"type": "null"}]},
+          "ruleId": {"type": "string"}, "disposition": {"$ref": "#/$defs/disposition"}
+        }}}
+    }, "required": ["coverageStatus", "revision", "findings"]},
+    {"properties": {
+      "operation": {"const": "review.preview"}, "expectedHash": {"$ref": "#/$defs/hash"},
+      "canSet": {"type": "boolean"}, "findingId": {"anyOf": [{"$ref": "#/$defs/finding"}, {"type": "null"}]},
+      "disposition": {"anyOf": [{"$ref": "#/$defs/disposition"}, {"type": "null"}]},
+      "revision": {"$ref": "#/$defs/hash"}, "revisions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/hash"}}
+    }, "required": ["expectedHash", "canSet", "findingId", "disposition", "revision", "revisions"]},
+    {"properties": {
+      "operation": {"const": "review.set"}, "saved": {"const": true}, "findingId": {"$ref": "#/$defs/finding"},
+      "state": {"enum": ["needs_review", "accepted_risk", "false_positive"]},
+      "revision": {"$ref": "#/$defs/hash"}, "previousRevision": {"$ref": "#/$defs/hash"}
+    }, "required": ["saved", "findingId", "state", "revision", "previousRevision"]},
+    {"properties": {
+      "operation": {"const": "review.restore"}, "restored": {"const": true},
+      "revision": {"$ref": "#/$defs/hash"}, "previousRevision": {"$ref": "#/$defs/hash"}
+    }, "required": ["restored", "revision", "previousRevision"]}
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "finding": {"type": "string", "pattern": "^finding:[a-f0-9]{24}$"},
+    "disposition": {"type": "object", "additionalProperties": false, "required": ["state", "status"],
+      "properties": {
+        "state": {"enum": ["needs_review", "accepted_risk", "false_positive"]},
+        "status": {"enum": ["unreviewed", "current", "stale", "unavailable"]},
+        "reviewedAt": {"type": "string", "format": "date-time"}
+      },
+      "allOf": [{"if": {"properties": {"status": {"const": "current"}}}, "then": {"required": ["reviewedAt"]}, "else": {"properties": {"state": {"const": "needs_review"}}}}]
+    }
+  }
+}

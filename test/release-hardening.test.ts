@@ -7,9 +7,8 @@ describe("macOS release hardening", () => {
     const runtimeVersion = fs.readFileSync("src/version.ts", "utf8");
     const infoPlist = fs.readFileSync("apps/macos/Supporting/Info.plist", "utf8");
 
-    expect(packageJson.version).toBe("0.3.1");
     expect(runtimeVersion).toContain(`VERSION = "${packageJson.version}"`);
-    expect(infoPlist).toContain("<string>0.3.1</string>");
+    expect(infoPlist).toContain(`<string>${packageJson.version}</string>`);
     expect(infoPlist).toContain("<string>5</string>");
   });
 

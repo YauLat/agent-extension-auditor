@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Finding, InventoryItem, InventoryType, ScanReport, Severity } from "../types.js";
 import { RULESET_VERSION } from "../version.js";
+import { AuditOperationError, type OperationReason } from "../util/errors.js";
 
 const MAX_BASELINE_BYTES = 16 * 1024 * 1024;
 
@@ -75,16 +76,51 @@ export interface BaselineDiff {
   };
 }
 
-export class BaselineError extends Error {}
+export class BaselineError extends AuditOperationError {
+  constructor(message: string, reason: OperationReason = "BASELINE_OPERATION_FAILED") { super(reason, message); }
+}
 
 export function createBaseline(report: ScanReport): BaselineSnapshot {
   if (report.schemaVersion !== 2 || !report.coverage) {
-    throw new BaselineError("A schema 2 report with coverage is required to create a baseline.");
+    throw new BaselineError("A schema 2 report with coverage is required to create a baseline.", "SCAN_INCOMPLETE");
   }
   if (report.coverage.status !== "complete") {
-    throw new BaselineError("An incomplete scan cannot create or replace a baseline.");
+    throw new BaselineError("An incomplete scan cannot create or replace a baseline.", "SCAN_INCOMPLETE");
   }
   return snapshotReport(report);
+}
+
+export interface BaselineChangeReview {
+  status: "comparable" | "partial" | "incompatible" | "unavailable";
+  generatedAt: string;
+  items: Array<{ itemId: string; state: "new" | "changed" | "unchanged" | "unknown" }>;
+}
+
+/** Labels describe this exact snapshot; duplicate names never become a UI join. */
+export function reviewChanges(baseline: BaselineSnapshot | null, report: ScanReport, diff: BaselineDiff | null): BaselineChangeReview {
+  const status = diff?.status ?? (report.coverage?.status === "complete" ? "unavailable" : "partial");
+  const usable = baseline !== null && diff?.status === "comparable" && report.coverage?.status === "complete"
+    && diff.currentGeneratedAt === report.generatedAt && diff.baselineCreatedAt === baseline.createdAt
+    && baseline.scopeHash === hashValue(report.coverage.scope) && baseline.rulesetVersion === RULESET_VERSION;
+  const previous = new Map<string, BaselineAsset[]>();
+  for (const asset of baseline?.assets ?? []) previous.set(asset.identityHash, [...(previous.get(asset.identityHash) ?? []), asset]);
+  const identities = new Map<string, number>(), ids = new Map<string, number>();
+  for (const item of report.inventory) {
+    const identity = hashValue([item.type, item.name]);
+    identities.set(identity, (identities.get(identity) ?? 0) + 1);
+    ids.set(item.id, (ids.get(item.id) ?? 0) + 1);
+  }
+  const findings = new Map<string, Finding[]>();
+  for (const finding of report.findings) if (finding.itemId) findings.set(finding.itemId, [...(findings.get(finding.itemId) ?? []), finding]);
+  return { status, generatedAt: report.generatedAt, items: report.inventory.map(item => {
+    const current = snapshotAsset(item, findings.get(item.id) ?? []);
+    const prior = previous.get(current.identityHash) ?? [];
+    let state: BaselineChangeReview["items"][number]["state"] = "unknown";
+    if (usable && ids.get(item.id) === 1 && identities.get(current.identityHash) === 1 && prior.length <= 1) {
+      state = prior.length === 0 ? "new" : prior[0].reviewHash === current.reviewHash ? "unchanged" : "changed";
+    }
+    return { itemId: item.id, state };
+  }) };
 }
 
 export function compareBaseline(baseline: BaselineSnapshot, report: ScanReport): BaselineDiff {
@@ -168,9 +204,9 @@ export async function readBaseline(filePath: string): Promise<BaselineSnapshot> 
   try {
     value = JSON.parse(content);
   } catch {
-    throw new BaselineError("Baseline file is not valid JSON.");
+    throw new BaselineError("Baseline file is not valid JSON.", "BASELINE_INVALID");
   }
-  if (!isBaseline(value)) throw new BaselineError("Baseline file has an unsupported or invalid shape.");
+  if (!isBaseline(value)) throw new BaselineError("Baseline file has an unsupported or invalid shape.", "BASELINE_INVALID");
   return value;
 }
 

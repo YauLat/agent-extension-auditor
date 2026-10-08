@@ -7,11 +7,20 @@ struct ScanRequest: Equatable {
     var directPackage: Bool = false
 
     func arguments(scannerURL: URL, outputURL: URL) -> [String] {
+        // Canonicalize the existing parent before appending a snapshot that may not exist yet.
+        // Otherwise /var versus /private/var changes the scope on the first baseline write.
+        let canonicalRoot: URL
+        if let resolved = realpath(rootURL.path, nil) {
+            canonicalRoot = URL(fileURLWithPath: String(cString: resolved))
+            free(resolved)
+        } else { canonicalRoot = rootURL }
         var values = [
             scannerURL.path,
             "scan",
+            "--with-reviews",
             "--format", "json",
             "--output", outputURL.path,
+            "--exclude", canonicalRoot.appendingPathComponent(".agent-audit-baseline.json").path,
             "--root", rootURL.path
         ]
         if directPackage { values += ["--path", rootURL.path] }
@@ -251,17 +260,36 @@ struct AuditRunner {
         }.value
     }
 
-    func reviewBaseline(_ request: ScanRequest) async throws -> BaselineReview {
-        let data = try await baselineCommand(request, operation: "review")
-        return try JSONDecoder().decode(BaselineReview.self, from: data)
+    func reviewBaseline(_ request: ScanRequest, cancellation: ScanCancellation = ScanCancellation()) async throws -> BaselineReview {
+        let data = try await baselineCommand(request, operation: "review", extraArguments: ["--include-report"], cancellation: cancellation)
+        try cancellation.checkCancellation()
+        let review = try JSONDecoder().decode(BaselineReview.self, from: data)
+        guard let report = review.report, let changes = review.changeReview,
+              report.schemaVersion == 2, changes.generatedAt == report.generatedAt else { throw AuditRunnerError.invalidReport }
+        return review
     }
 
     func acceptBaseline(_ request: ScanRequest, review: BaselineReview) async throws {
+        guard review.canAccept, review.hasValidToken else { throw AuditRunnerError.invalidReport }
         _ = try await baselineCommand(request, operation: review.exists ? "accept" : "create", expectedHash: review.reviewedHash)
     }
 
-    private func baselineCommand(_ request: ScanRequest, operation: String, expectedHash: String? = nil) async throws -> Data {
+    func previewFindingDisposition(_ request: ScanRequest, findingID: String, contentHash: String) async throws -> FindingDispositionPreview {
+        let data = try await baselineCommand(request, operation: "preview", command: "review", extraArguments: ["--finding", findingID, "--content-hash", contentHash])
+        let preview = try JSONDecoder().decode(FindingDispositionPreview.self, from: data)
+        guard preview.isValid, preview.findingId == findingID else { throw AuditRunnerError.invalidReport }
+        return preview
+    }
+
+    func saveFindingDisposition(_ request: ScanRequest, preview: FindingDispositionPreview, state: FindingDispositionState) async throws {
+        guard preview.isValid, let findingID = preview.findingId else { throw AuditRunnerError.invalidReport }
+        _ = try await baselineCommand(request, operation: "set", expectedHash: preview.expectedHash, command: "review", extraArguments: ["--finding", findingID, "--state", state.rawValue])
+    }
+
+    private func baselineCommand(_ request: ScanRequest, operation: String, expectedHash: String? = nil, command: String = "baseline", extraArguments: [String] = [], cancellation: ScanCancellation = ScanCancellation()) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {
+            try cancellation.checkCancellation()
+            defer { cancellation.finish() }
             let status = locator.status()
             guard let node = status.nodeURL else { throw AuditRunnerError.nodeMissing }
             guard let scanner = status.scannerURL else { throw AuditRunnerError.scannerMissing }
@@ -275,7 +303,8 @@ struct AuditRunner {
             guard let resolved = realpath(request.rootURL.path, nil) else { throw AuditRunnerError.launchFailed }
             let canonicalRoot = String(cString: resolved)
             free(resolved)
-            var arguments = [scanner.path, "baseline", operation, "--format", "json", "--root", canonicalRoot]
+            var arguments = [scanner.path, command, operation, "--format", "json", "--root", canonicalRoot] + extraArguments
+            if command == "review" { arguments += ["--exclude", URL(fileURLWithPath: canonicalRoot).appendingPathComponent(".agent-audit-baseline.json").path] }
             if request.directPackage { arguments += ["--path", canonicalRoot] }
             if !request.includeHome || request.directPackage { arguments.append("--no-home") }
             if let expectedHash { arguments += ["--expected-hash", expectedHash, "--yes"] }
@@ -285,8 +314,9 @@ struct AuditRunner {
             process.currentDirectoryURL = request.rootURL
             process.standardOutput = output
             process.standardError = FileHandle.nullDevice
-            try process.run()
+            try cancellation.launch(process)
             process.waitUntilExit()
+            try cancellation.checkCancellation()
             guard process.terminationStatus == 0 else { throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus) }
             return try Data(contentsOf: outputURL)
         }.value

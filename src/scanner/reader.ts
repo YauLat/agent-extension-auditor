@@ -40,7 +40,7 @@ export class ScanReader {
   private readonly contents = new Map<string, string | undefined>();
   private readonly modes = new Map<string, number>();
   private readonly readPaths = new Set<string>();
-  readonly excludedDirectories = ["node_modules", ".git", "dist"];
+  readonly excludedDirectories = ["node_modules", ".git", "dist", ".agent-audit-reviews"];
 
   constructor(
     private readonly roots: TargetLocation[],

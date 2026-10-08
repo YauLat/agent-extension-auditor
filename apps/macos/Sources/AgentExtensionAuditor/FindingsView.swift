@@ -4,7 +4,10 @@ struct FindingsView: View {
     @EnvironmentObject private var store: AuditStore
     @State private var presentDetailAsSheet = false
 
-    private var findings: [Finding] { store.findings() }
+    private var findings: [Finding] {
+        guard store.selectedSection == .findings else { return [] }
+        return store.findings()
+    }
     private var selectedFinding: Finding? {
         guard let id = store.selectedFindingID else { return nil }
         return store.report?.findings.first(where: { $0.id == id })
@@ -14,25 +17,33 @@ struct FindingsView: View {
         VStack(alignment: .leading, spacing: 16) {
                 PageHeader(
                     title: text(.findings, language: store.language),
-                    subtitle: "\(findings.count.formatted()) · \(text(.reviewQueue, language: store.language))",
+                    subtitle: "\(findings.count.formatted()) · \(text(.reviewQueue, language: store.language)) · \(reviewCountsText)",
                     symbol: "list.bullet.rectangle.portrait.fill"
                 )
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
+
+                if !store.findingReviewMessage.isEmpty {
+                    Text(store.findingReviewMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 24)
+                }
 
                 filterBar
                     .padding(.horizontal, 24)
 
                 if findings.isEmpty {
                     EmptyStateView(
-                        title: text(.noFindings, language: store.language),
-                        detail: text(.noFindingsDetail, language: store.language),
-                        symbol: "checkmark.shield.fill"
+                        title: store.selectedChangeFilter == .newAndChanged ? (store.language == .zhHant ? "沒有符合條件的新增或修改發現" : "No matching new or changed findings") : text(.noFindings, language: store.language),
+                        detail: store.selectedChangeFilter == .newAndChanged ? (store.language == .zhHant ? "完整報告仍可能有風險或無法比較的項目；切回全部檢視。" : "The full report may still contain risks or unmatched items. Switch to All to review them.") : text(.noFindingsDetail, language: store.language),
+                        symbol: store.selectedChangeFilter == .newAndChanged ? "line.3.horizontal.decrease.circle" : "checkmark.shield.fill"
                     )
                 } else {
                     List(selection: $store.selectedFindingID) {
                         ForEach(findings) { finding in
-                            FindingListRow(finding: finding, language: store.language)
+                            FindingListRow(finding: finding, language: store.language, changeState: store.comparisonGeneratedAt != nil ? store.changeState(for: finding) : nil)
                                 .tag(finding.id)
                         }
                     }
@@ -45,6 +56,10 @@ struct FindingsView: View {
             if newValue != nil {
                 presentDetailAsSheet = store.windowWidth < 1_100
             }
+        }
+        .onChange(of: store.windowWidth) { _, width in
+            guard selectedFinding != nil else { return }
+            presentDetailAsSheet = width < 1_100
         }
         .inspector(isPresented: inspectorBinding) {
             if let selectedFinding {
@@ -64,6 +79,15 @@ struct FindingsView: View {
 
     private var filterBar: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let comparedAt = store.comparisonGeneratedAt {
+                Text((store.language == .zhHant ? "比較時間：" : "Compared at: ") + formattedComparisonDate(comparedAt)
+                    + (store.canFilterChanges ? "" : (store.language == .zhHant ? " · 無法比較，仍保留全部風險" : " · Comparison unavailable; all risks retained")))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Picker(store.language == .zhHant ? "審閱範圍" : "Review scope", selection: $store.selectedChangeFilter) {
+                Text(store.language == .zhHant ? "全部" : "All").tag(ChangeReviewFilter.all)
+                Text(store.language == .zhHant ? "新增及修改" : "New and changed").tag(ChangeReviewFilter.newAndChanged)
+            }.pickerStyle(.segmented).frame(maxWidth: 320).disabled(!store.canFilterChanges)
             SeverityFilterBar()
             HStack(spacing: 10) {
                 Picker(
@@ -88,22 +112,28 @@ struct FindingsView: View {
                 } label: {
                     Label(text(.clearFilters, language: store.language), systemImage: "xmark.circle")
                 }
-                .disabled(store.searchText.isEmpty && store.selectedSeverity == nil && store.selectedRuleID == nil)
+                .disabled(store.searchText.isEmpty && store.selectedSeverity == nil && store.selectedRuleID == nil && store.selectedChangeFilter == .all)
             }
         }
+    }
+
+    private var reviewCountsText: String {
+        let counts = store.dispositionCounts
+        return store.language == .zhHant ? "全部報告：待審閱 \(counts.needsReview.formatted())／已審閱 \(counts.reviewed.formatted())"
+            : "Full report: \(counts.needsReview.formatted()) need review / \(counts.reviewed.formatted()) reviewed"
     }
 
     private var inspectorBinding: Binding<Bool> {
         Binding(
             get: { selectedFinding != nil && !presentDetailAsSheet },
-            set: { if !$0 { store.selectedFindingID = nil } }
+            set: { if !$0 && !presentDetailAsSheet { store.selectedFindingID = nil } }
         )
     }
 
     private var sheetBinding: Binding<Bool> {
         Binding(
             get: { selectedFinding != nil && presentDetailAsSheet },
-            set: { if !$0 { store.selectedFindingID = nil } }
+            set: { if !$0 && presentDetailAsSheet { store.selectedFindingID = nil } }
         )
     }
 }
@@ -111,6 +141,7 @@ struct FindingsView: View {
 private struct FindingListRow: View {
     let finding: Finding
     let language: AppLanguage
+    let changeState: AssetChangeState?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -133,6 +164,12 @@ private struct FindingListRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                Text(finding.reviewLabel(language: language))
+                    .font(.caption2).foregroundStyle(.secondary)
+                if let disposition = finding.disposition {
+                    Text(disposition.label(language: language)).font(.caption2).foregroundStyle(.secondary)
+                }
+                if let changeState { Text(changeState.label(language: language)).font(.caption2).foregroundStyle(.secondary) }
                 Text(locationText(finding.location))
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
@@ -151,6 +188,7 @@ private struct FindingListRow: View {
 struct FindingDetailView: View {
     @EnvironmentObject private var store: AuditStore
     let finding: Finding
+    @State private var proposedState: FindingDispositionState = .needsReview
 
     var body: some View {
         ScrollView {
@@ -180,6 +218,13 @@ struct FindingDetailView: View {
                     title: text(.message, language: store.language),
                     value: finding.message
                 )
+                Text(finding.reviewLabel(language: store.language)).font(.caption).foregroundStyle(.secondary)
+                manualReview
+                if let explanation = finding.explanation {
+                    DetailField(title: store.language == .zhHant ? "命中原因" : "What matched", value: explanation.detected)
+                    DetailField(title: store.language == .zhHant ? "可能影響" : "Potential impact", value: explanation.impact)
+                    DetailField(title: store.language == .zhHant ? "判定限制" : "Detection limits", value: explanation.limits)
+                }
                 DetailField(
                     title: text(.location, language: store.language),
                     value: locationText,
@@ -223,9 +268,11 @@ struct FindingDetailView: View {
                         Text(text(.remediation, language: store.language))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        Text(remediation.summary)
-                            .font(.callout)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if remediation.summary != finding.recommendation {
+                            Text(remediation.summary)
+                                .font(.callout)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
 
                         if remediation.mode == .guided {
                             Button {
@@ -234,6 +281,7 @@ struct FindingDetailView: View {
                                 Label(text(.guidedRepair, language: store.language), systemImage: "wrench.and.screwdriver")
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(store.findingReviewBusy || store.isScanning || store.baselineBusy)
                         } else {
                             Label(text(.manualReview, language: store.language), systemImage: "person.crop.circle.badge.checkmark")
                                 .font(.caption.weight(.medium))
@@ -246,6 +294,33 @@ struct FindingDetailView: View {
             }
             .padding(20)
         }
+    }
+
+    private var manualReview: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(store.language == .zhHant ? "人工審閱決定" : "Manual review decision").font(.headline)
+            Text(finding.disposition?.label(language: store.language) ?? FindingDispositionState.needsReview.label(language: store.language)).font(.callout)
+            Text(store.language == .zhHant ? "決定只適用於相同內容、權限、範圍及規則。接受風險或判定誤報不代表安全，所有風險仍保留。" : "Decisions apply only to unchanged content, permissions, scope and rules. Accepted risk or a false-positive decision does not certify safety; all risks remain visible.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button(store.language == .zhHant ? "核對目前內容" : "Check current content") {
+                Task { await store.prepareFindingReview(finding) }
+            }
+            .disabled(store.findingReviewBusy || store.isScanning || store.baselineBusy)
+            if let preview = store.findingReviewPreview, preview.findingId == finding.scannerID, preview.isValid {
+                Picker(store.language == .zhHant ? "保存為" : "Save as", selection: $proposedState) {
+                    ForEach(FindingDispositionState.allCases) { state in Text(state.label(language: store.language)).tag(state) }
+                }
+                Button(store.language == .zhHant ? "儲存此審閱決定" : "Save this review decision") {
+                    Task { await store.saveFindingReview(proposedState) }
+                }
+                .disabled(!store.canSaveFindingReview)
+            }
+            if store.findingReviewBusy { ProgressView().controlSize(.small) }
+            if !store.findingReviewMessage.isEmpty {
+                Text(store.findingReviewMessage).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+        .onChange(of: finding.id) { _, _ in proposedState = .needsReview }
     }
 
     private var locationText: String {

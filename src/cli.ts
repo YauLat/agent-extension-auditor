@@ -9,12 +9,14 @@ import {
   deleteBaseline,
   readBaseline,
   renderBaselineDiff,
+  reviewChanges,
   writeBaseline
 } from "./baseline/index.js";
 import { explainRule } from "./explain/index.js";
 import { renderReport, type ReportFormat } from "./report/index.js";
 import { filterReportByMinSeverity, scanAgentExtensions } from "./scanner/index.js";
 import { exists } from "./scanner/files.js";
+import { AuditOperationError } from "./util/errors.js";
 import { getDefaultTargets } from "./scanner/targets.js";
 import { rules, severityRank } from "./rules/definitions.js";
 import { applyRepair, planRepair, rollbackRepair, type RepairAction } from "./remediation/index.js";
@@ -22,6 +24,7 @@ import type { Severity } from "./types.js";
 import { runTerminalUi } from "./ui/terminal.js";
 import { toDisplayPath } from "./util/paths.js";
 import { VERSION } from "./version.js";
+import { applyReviews, loadReviews, previewReview, saveReview, restoreReviews } from "./review-state/index.js";
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -69,15 +72,63 @@ async function main(argv: string[]): Promise<void> {
     await runBaseline(rest);
     return;
   }
+  if (command === "review") {
+    await runReview(rest);
+    return;
+  }
 
   throw new CliError(`Unknown command: ${command}`);
+}
+
+async function runReview(args: string[]): Promise<void> {
+  const [operation, ...rest] = args;
+  const scanArgs: string[] = [];
+  let findingId: string | undefined, state: string | undefined, expectedHash: string | undefined,
+    revision: string | undefined, contentHash: string | undefined, confirmed = false;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    if (arg === "--finding") findingId = requireOptionValue(arg, rest[++i]);
+    else if (arg === "--state") state = requireOptionValue(arg, rest[++i]);
+    else if (arg === "--expected-hash") expectedHash = requireOptionValue(arg, rest[++i]);
+    else if (arg === "--revision") revision = requireOptionValue(arg, rest[++i]);
+    else if (arg === "--content-hash") contentHash = requireOptionValue(arg, rest[++i]);
+    else if (arg === "--yes") confirmed = true;
+    else {
+      scanArgs.push(arg);
+      if (["--path", "--root", "--home", "--include", "--exclude", "--format", "--output", "--min-severity", "--fail-on"].includes(arg)) scanArgs.push(requireOptionValue(arg, rest[++i]));
+    }
+  }
+  const parsed = parseOptions(scanArgs);
+  if (!["list", "preview", "set", "restore"].includes(operation) || parsed.output || parsed.minSeverity || parsed.allowIncomplete || parsed.failOn || parsed.withReviews || (parsed.formatProvided && parsed.format !== "json")) throw new CliError("Invalid review command or scan filter.");
+  if (operation === "set" && (!findingId || !state || !expectedHash || !confirmed)) throw new AuditOperationError("REVIEW_REQUIRED", "Review writes require a finding, state, expected hash and explicit confirmation.");
+  if (operation === "restore" && (!revision || !expectedHash || !confirmed)) throw new AuditOperationError("REVIEW_REQUIRED", "Review restore requires a revision, expected hash and explicit confirmation.");
+  if (operation === "list" && (findingId || state || expectedHash || revision || contentHash || confirmed)
+    || operation === "preview" && (state || expectedHash || revision || confirmed)
+    || operation === "set" && revision || operation === "restore" && (findingId || state || contentHash)) throw new CliError("Inapplicable review option.");
+  if (contentHash && !findingId) throw new CliError("Content checks require a finding.");
+  const root = parsed.root ?? process.cwd();
+  const rescan = () => scanAgentExtensions({ paths: parsed.paths, cwd: root, home: parsed.home, includeHome: parsed.includeHome, includePaths: parsed.includePaths, excludePaths: parsed.excludePaths });
+  const report = await rescan();
+  const loaded = await loadReviews(root);
+  if (contentHash) {
+    const finding = report.findings.find(f => f.id === findingId);
+    if (!/^[a-f0-9]{64}$/.test(contentHash) || !finding || report.inventory.find(i => i.id === finding.itemId)?.contentHash !== contentHash) throw new AuditOperationError("REVIEW_STALE", "The displayed finding is stale. Scan again.");
+  }
+  let response: object;
+  if (operation === "preview") response = previewReview(report, loaded, findingId);
+  else if (operation === "set") response = await saveReview(root, report, findingId!, state!, expectedHash!, confirmed, rescan);
+  else if (operation === "restore") response = await restoreReviews(root, report, revision!, expectedHash!, confirmed, rescan);
+  else response = { tool: "agent-audit", schemaVersion: 2, operation: "review.list", coverageStatus: report.coverage?.status, revision: loaded.hash,
+    findings: applyReviews(report, loaded).findings.map(f => ({ findingId: f.id ?? null, ruleId: f.ruleId, disposition: f.disposition })) };
+  process.stdout.write(JSON.stringify(response) + "\n");
 }
 
 async function runBaseline(args: string[]): Promise<void> {
   const [operation, ...optionArgs] = args;
   const baselineOptions = parseBaselineOptions(optionArgs);
   const parsed = parseOptions(baselineOptions.scanArgs);
-  if (parsed.minSeverity || parsed.output || (parsed.formatProvided && parsed.format !== "json") || parsed.allowIncomplete || parsed.failOn) {
+  if (baselineOptions.includeReport && operation !== "review") throw new CliError("--include-report is supported by baseline review only.");
+  if (parsed.minSeverity || parsed.output || (parsed.formatProvided && parsed.format !== "json") || parsed.allowIncomplete || parsed.failOn || parsed.withReviews) {
     throw new CliError("Baseline commands do not support --min-severity, --output, --format, or --allow-incomplete.");
   }
   const filePath = path.resolve(baselineOptions.file ?? path.join(parsed.root ?? process.cwd(), ".agent-audit-baseline.json"));
@@ -85,7 +136,8 @@ async function runBaseline(args: string[]): Promise<void> {
   if (operation === "delete") {
     if (!baselineOptions.confirmed) throw new CliError("baseline delete requires --yes.");
     await deleteBaseline(filePath);
-    console.log(`Deleted baseline ${filePath}`);
+    if (parsed.format === "json") console.log(JSON.stringify(baselineResponse("baseline.delete", { deleted: true })));
+    else console.log(`Deleted baseline ${filePath}`);
     return;
   }
   if (operation !== "create" && operation !== "diff" && operation !== "accept" && operation !== "review") {
@@ -103,31 +155,46 @@ async function runBaseline(args: string[]): Promise<void> {
     includePaths: parsed.includePaths,
     // The baseline is product state, not an extension asset. Excluding it also prevents
     // a custom baseline stored under a skill package from causing self-generated diffs.
-    excludePaths: [...parsed.excludePaths, filePath]
+    excludePaths: [...new Set([...parsed.excludePaths, filePath])]
   });
   if (operation === "diff") {
     const diff = compareBaseline(await readBaseline(filePath), report);
-    process.stdout.write(parsed.format === "json" ? JSON.stringify(diff) + "\n" : renderBaselineDiff(diff));
+    process.stdout.write(parsed.format === "json" ? JSON.stringify(baselineResponse("baseline.diff", diff)) + "\n" : renderBaselineDiff(diff));
     process.exitCode = diff.status === "incompatible" ? 5 : diff.status === "partial" ? 3 : 0;
     return;
   }
 
+  if (operation === "review" && baselineOptions.includeReport && report.coverage?.status !== "complete") {
+    const previous = await exists(filePath) ? await readBaseline(filePath) : null;
+    const diff = previous ? compareBaseline(previous, report) : null;
+    process.stdout.write(JSON.stringify(baselineResponse("baseline.review", {
+      exists: previous !== null, reviewedHash: null, canAccept: false,
+      assets: report.inventory.map(asset => ({ name: asset.name, type: asset.type })), diff,
+      report: applyReviews(report, await loadReviews(parsed.root ?? process.cwd())),
+      changeReview: reviewChanges(previous, report, diff)
+    })) + "\n");
+    return;
+  }
   const baseline = createBaseline(report);
   const previous = await exists(filePath) ? await readBaseline(filePath) : null;
   const reviewedHash = createHash("sha256").update(JSON.stringify({ scope: baseline.scopeHash, rules: baseline.rulesetVersion,
     assets: baseline.assets, previous })).digest("hex");
   if (operation === "review") {
     const diff = previous ? compareBaseline(previous, report) : null;
-    process.stdout.write(JSON.stringify({ exists: previous !== null, reviewedHash,
-      canAccept: !diff || diff.status === "comparable", assets: baseline.assets.map(a => ({ name: a.name, type: a.type })), diff }) + "\n");
+    process.stdout.write(JSON.stringify(baselineResponse("baseline.review", { exists: previous !== null, reviewedHash,
+      canAccept: !diff || diff.status === "comparable", assets: baseline.assets.map(a => ({ name: a.name, type: a.type })), diff,
+      ...(baselineOptions.includeReport ? {
+        report: applyReviews(report, await loadReviews(parsed.root ?? process.cwd())),
+        changeReview: reviewChanges(previous, report, diff)
+      } : {}) })) + "\n");
     return;
   }
   if (baselineOptions.expectedHash && baselineOptions.expectedHash !== reviewedHash) {
-    throw new Error("Files or baseline changed since review. Review again before accepting.");
+    throw new AuditOperationError("REVIEW_STALE", "Files or baseline changed since review. Review again before accepting.");
   }
-  if (parsed.format === "json" && !baselineOptions.expectedHash) throw new Error("JSON baseline writes require --expected-hash from baseline review.");
+  if (parsed.format === "json" && !baselineOptions.expectedHash) throw new AuditOperationError("REVIEW_REQUIRED", "JSON baseline writes require --expected-hash from baseline review.");
   await writeBaseline(filePath, baseline, operation === "accept");
-  if (parsed.format === "json") console.log(JSON.stringify({ saved: true, assets: baseline.assets.length }));
+  if (parsed.format === "json") console.log(JSON.stringify(baselineResponse(`baseline.${operation}`, { saved: true, assets: baseline.assets.length })));
   else console.log(`${operation === "accept" ? "Accepted" : "Created"} baseline ${filePath} (${baseline.assets.length} assets)`);
 }
 
@@ -141,7 +208,8 @@ async function runScan(args: string[]): Promise<void> {
     includePaths: parsed.includePaths,
     excludePaths: parsed.excludePaths
   });
-  const report = filterReportByMinSeverity(rawReport, parsed.minSeverity);
+  const reviewedReport = parsed.withReviews ? applyReviews(rawReport, await loadReviews(parsed.root ?? process.cwd())) : rawReport;
+  const report = filterReportByMinSeverity(reviewedReport, parsed.minSeverity);
   const output = renderReport(report, parsed.format);
   if (!parsed.allowIncomplete) {
     process.exitCode = report.coverage?.status === "failed" ? 4 : report.coverage?.status === "partial" ? 3 : 0;
@@ -160,6 +228,7 @@ async function runScan(args: string[]): Promise<void> {
 
 async function runUi(args: string[]): Promise<void> {
   const parsed = parseOptions(args);
+  if (parsed.withReviews) throw new CliError("--with-reviews is supported by scan only.");
   if (parsed.output) {
     throw new CliError("agent-audit ui does not support --output. Use scan --format html/json/markdown for files.");
   }
@@ -184,6 +253,7 @@ async function runUi(args: string[]): Promise<void> {
 
 async function runDoctor(args: string[]): Promise<void> {
   const parsed = parseOptions(args);
+  if (parsed.withReviews) throw new CliError("--with-reviews is supported by scan only.");
   const cwd = path.resolve(parsed.root ?? process.cwd());
   const home = path.resolve(parsed.home ?? os.homedir());
   const targets = getDefaultTargets(cwd, home, { includeHome: parsed.includeHome });
@@ -259,6 +329,7 @@ async function runRepair(args: string[]): Promise<void> {
 }
 
 interface ParsedOptions {
+  withReviews?: boolean;
   paths: string[];
   failOn?: Severity;
   allowIncomplete?: boolean;
@@ -283,6 +354,7 @@ interface ParsedRepairOptions {
 }
 
 interface ParsedBaselineOptions {
+  includeReport?: boolean;
   expectedHash?: string;
   file?: string;
   confirmed: boolean;
@@ -293,7 +365,9 @@ function parseBaselineOptions(args: string[]): ParsedBaselineOptions {
   const parsed: ParsedBaselineOptions = { confirmed: false, scanArgs: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--expected-hash") {
+    if (arg === "--include-report") {
+      parsed.includeReport = true;
+    } else if (arg === "--expected-hash") {
       parsed.expectedHash = requireOptionValue(arg, args[++index]);
     } else if (arg === "--file") {
       parsed.file = requireOptionValue(arg, args[++index]);
@@ -400,6 +474,8 @@ function parseOptions(args: string[]): ParsedOptions {
         throw new CliError("Missing value for --home");
       }
       parsed.home = value;
+    } else if (arg === "--with-reviews") {
+      parsed.withReviews = true;
     } else if (arg === "--allow-incomplete") {
       parsed.allowIncomplete = true;
     } else if (arg === "--no-home") {
@@ -462,10 +538,14 @@ Usage:
   agent-audit baseline diff [--file .agent-audit-baseline.json] [scan options]
   agent-audit baseline accept --yes [--file .agent-audit-baseline.json] [scan options]
   agent-audit baseline delete --yes [--file .agent-audit-baseline.json]
+  agent-audit review list|preview --format json [--finding <id>] [scan options]
+  agent-audit review set --format json --finding <id> --state needs_review|accepted_risk|false_positive --expected-hash <sha256> --yes [scan options]
+  agent-audit review restore --format json --revision <sha256> --expected-hash <preview-sha256> --yes [scan options]
 
 Options:
   --path <path>                    Inspect an explicit package directory or file; repeatable.
   --fail-on medium|high|critical    Exit 6 when findings meet threshold (coverage errors take precedence).
+  --with-reviews                   Read private manual decisions in scan reports; risk and coverage remain unchanged.
   --root <path>                    Workspace root to scan. Defaults to the current directory.
   --home <path>                    Home directory to scan. Defaults to the current user's home.
   --no-home                        Scan only workspace/project locations, not home-directory agent roots.
@@ -497,11 +577,31 @@ Baseline safety:
 
 class CliError extends Error {}
 
+function baselineResponse(operation: string, payload: object) {
+  const response = { tool: "agent-audit", schemaVersion: 2, operation };
+  // Preserve the existing baseline-diff tool/schema and flat payload fields.
+  return { ...response, ...payload, operation, response };
+}
+
+function machineOperation(args: string[]): string {
+  if (["scan", "ui", "explain", "doctor"].includes(args[0])) return args[0];
+  if (args[0] === "baseline" && ["review", "create", "accept", "diff", "delete"].includes(args[1])) return `baseline.${args[1]}`;
+  if (args[0] === "repair" && ["plan", "apply", "rollback"].includes(args[1])) return `repair.${args[1]}`;
+  if (args[0] === "review" && ["list", "preview", "set", "restore"].includes(args[1])) return `review.${args[1]}`;
+  return "unknown";
+}
+
 main(process.argv.slice(2)).catch((error: unknown) => {
   const args = process.argv.slice(2);
   if (args[args.indexOf("--format") + 1] === "json") {
     const usage = error instanceof CliError;
-    process.stdout.write(JSON.stringify({ tool: "agent-audit", schemaVersion: 2, error: { code: usage ? "INVALID_USAGE" : "OPERATION_FAILED", message: usage ? "Invalid command or option. Run agent-audit --help." : "Operation failed. Check input paths, permissions, and scan scope." } }) + "\n");
+    const missingPath = error instanceof Error && "code" in error && error.code === "ENOENT";
+    const reason = usage ? "INVALID_ARGUMENT" : error instanceof AuditOperationError ? error.reason : missingPath ? "INPUT_PATH_UNAVAILABLE" : "UNKNOWN_FAILURE";
+    const nextAction = usage ? "READ_HELP" : reason === "INPUT_PATH_UNAVAILABLE" ? "CHECK_PATH_AND_ACCESS"
+      : reason === "SCAN_INCOMPLETE" ? "CHECK_COVERAGE_AND_SCOPE"
+      : args[0] === "review" || ["REVIEW_STATE_INVALID", "REVIEW_STATE_BUSY"].includes(reason) ? "CHECK_FINDING_REVIEW"
+      : ["REVIEW_STALE", "REVIEW_REQUIRED", "BASELINE_INVALID", "BASELINE_OPERATION_FAILED"].includes(reason) ? "REVIEW_BASELINE" : "CHECK_INPUT_AND_SCOPE";
+    process.stdout.write(JSON.stringify({ tool: "agent-audit", schemaVersion: 2, error: { code: usage ? "INVALID_USAGE" : "OPERATION_FAILED", reason, operation:machineOperation(args), retryable:false, nextAction, message: usage ? "Invalid command or option. Run agent-audit --help." : "Operation failed. Check input paths, permissions, and scan scope." } }) + "\n");
     process.exitCode = usage ? 2 : 1;
     return;
   }

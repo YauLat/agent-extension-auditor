@@ -10,31 +10,27 @@ struct ContentView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
         } detail: {
-            ZStack {
-                AuditorCanvas()
+            VStack(spacing: 0) {
+                if let started = store.scanStartedAt {
+                    TimelineView(.periodic(from: started, by: 1)) { context in
+                        Text(store.language == .zhHant ? "正在讀取及檢查本機檔案 · 已用 \(Int(context.date.timeIntervalSince(started))) 秒" : "Reading and reviewing local files · \(Int(context.date.timeIntervalSince(started))) seconds elapsed")
+                            .font(.caption).padding(8)
+                    }
+                } else if !store.scanMessage.isEmpty {
+                    Text(store.scanMessage).font(.caption).padding(8)
+                }
+                if let report = store.report {
+                    CoverageBanner(report: report, language: store.language) {
+                        store.selectedSection = .locations
+                    }
+                }
                 selectedContent
                     .id(store.selectedSection)
                     .transition(.opacity)
             }
+            .background { AuditorCanvas() }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.selectedSection)
             .toolbar { toolbarContent }
-            .safeAreaInset(edge: .top) {
-                VStack(spacing: 0) {
-                    if let started = store.scanStartedAt {
-                        TimelineView(.periodic(from: started, by: 1)) { context in
-                            Text(store.language == .zhHant ? "正在讀取及檢查本機檔案 · 已用 \(Int(context.date.timeIntervalSince(started))) 秒" : "Reading and reviewing local files · \(Int(context.date.timeIntervalSince(started))) seconds elapsed")
-                                .font(.caption).padding(8)
-                        }
-                    } else if !store.scanMessage.isEmpty {
-                        Text(store.scanMessage).font(.caption).padding(8)
-                    }
-                    if let report = store.report {
-                        CoverageBanner(report: report, language: store.language) {
-                            store.selectedSection = .locations
-                        }
-                    }
-                }
-            }
         }
         .frame(minWidth: 940, minHeight: 660)
         .background {
@@ -97,7 +93,7 @@ struct ContentView: View {
                     .lineLimit(1)
             }
             .help(text(.chooseFolder, language: store.language))
-            .disabled(store.isScanning || store.baselineBusy)
+            .disabled(store.isScanning || store.baselineBusy || store.findingReviewBusy)
 
             Toggle(
                 text(.includeHome, language: store.language),
@@ -109,7 +105,7 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
             .help(text(.includeHome, language: store.language))
-            .disabled(store.directPackage || store.isScanning || store.baselineBusy)
+            .disabled(store.directPackage || store.isScanning || store.baselineBusy || store.findingReviewBusy)
 
             Menu {
                 ForEach(AppLanguage.allCases) { language in
@@ -142,7 +138,7 @@ struct ContentView: View {
                     Label(text(.scanNow, language: store.language), systemImage: "arrow.clockwise")
                 }
             }
-            .disabled(store.isScanning || store.baselineBusy)
+            .disabled(store.isScanning || store.baselineBusy || store.findingReviewBusy)
             .keyboardShortcut("r", modifiers: .command)
         }
     }

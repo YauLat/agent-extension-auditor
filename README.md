@@ -35,13 +35,15 @@ It is not an antivirus engine and does not claim an extension is safe or malicio
 - Scan coverage status and safe diagnostics for unreadable, oversized, excluded, unsupported, or invalid files.
 - Canonical skill aliases, bundled script inspection, and Claude/Codex settings support.
 - Direct package/file inspection with `--path`, optional CI severity gates, and machine-readable errors.
+- [Formal JSON Schema contracts](docs/report-schema.md#formal-schemas-and-offline-validation) for scan/error/baseline/review consumers, with an [agent integration procedure](docs/agent-integration.md).
 - Manual local baseline comparison in the CLI and Mac app, with content-bound acceptance.
+- Per-finding manual decisions: needs review, accepted risk or marked false positive, with stale-content protection and private local history. Decisions preserve every risk, severity gate and coverage result.
 - A native top-five review queue and category/search-aware severity counts.
 - Privacy-first defaults: no telemetry, no cloud upload, no account, no secret value printing.
 
 ## Source version and release status
 
-This checkout is **0.3.1**. The changes below are available from source; this version is not yet published to npm or as a signed/notarized GitHub release. An npm install can therefore return an earlier public version. Local Mac packages are ad-hoc signed and still require Node.js 20+.
+This checkout is **0.3.2**. The changes below are available from source; this version is not yet published to npm or as a signed/notarized GitHub release. An npm install can therefore return an earlier public version. Local Mac packages are ad-hoc signed and still require Node.js 20+.
 
 Reproducible [performance and rule evaluation](docs/evaluation.md) and a [first-use validation protocol](docs/first-use-validation.md) are included. Synthetic rule results are regression evidence, not a general accuracy or safety score.
 
@@ -102,6 +104,9 @@ agent-audit scan --path ./downloaded-skill --format sarif --output findings.sari
 agent-audit scan --min-severity medium|high|critical
 agent-audit scan --no-home
 agent-audit scan --include .mcp.json --exclude ~/.codex/plugins/cache
+agent-audit scan --no-home --with-reviews --format json
+agent-audit review list --no-home --format json
+agent-audit review preview --no-home --finding <finding-id> --format json
 agent-audit ui
 agent-audit explain MCP_STDIO_COMMAND
 agent-audit doctor
@@ -135,6 +140,8 @@ agent-audit baseline accept --path ./downloaded-skill --root ./downloaded-skill 
 Use the same scope each time. Baselines are private local snapshots of hashes and metadata, not source-file copies or safety certificates. Incomplete scans and incompatible scope/rules cannot be accepted. JSON callers must supply the `reviewedHash` returned by `baseline review` using `--expected-hash`; changes to the files or existing baseline invalidate that approval.
 
 The Mac app opens without automatically scanning a potentially large Home library. In the Mac app, choose a folder, enable package mode in Settings for a downloaded package, and scan. Overview shows coverage and up to five findings to review first. “Compare baseline” previews changes; “Create baseline” or “Accept changes” stores only the state just reviewed. Configuration and static code findings do not prove runtime execution. Source URLs are self-declared and unverified.
+
+Per-finding decisions use a separate private history. Open a finding, check current content, choose needs review / accepted risk / marked false positive, and explicitly save. Changed content, permissions, scope or rules require another review. Decisions retain all warnings and severity gates. See [manual decisions and recovery](docs/report-schema.md#per-finding-manual-decisions) for CLI tokens, restoration and storage bounds; [release readiness](docs/release-readiness.md) lists the remaining distribution checks.
 
 The prohibition heuristic recognizes only bounded English negative instructions in documentation; it keeps the observation at informational severity. It never lowers executable script evidence. Prompt-injection detection is a narrow heuristic, not a comprehensive classifier.
 
@@ -248,7 +255,7 @@ JSON reports are designed for local automation and start with explicit privacy f
 ```json
 {
   "tool": "agent-audit",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "schemaVersion": 2,
   "privacy": {
     "telemetry": false,
@@ -274,3 +281,11 @@ npm run build
 Rule changes must include a matching `rules/<RULE_ID>.md` file and fixture coverage when practical. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Issues and pull requests are welcome. Before posting logs or reports, remove secrets, tokens, personal paths, extension inventories, and any other private local data. Use GitHub's private security advisory flow for vulnerabilities.
+
+### Review new and changed assets
+
+`agent-audit baseline review --include-report --format json --root <folder> --no-home` returns the full report used by that comparison and `changeReview.items` keyed by current inventory ID. Only complete compatible comparisons classify new/changed/unchanged assets; missing baselines, incomplete or incompatible scans and duplicate identities remain unknown. The default response without this flag stays compact. Partial opt-in reviews have `reviewedHash: null` and cannot be accepted.
+
+In the Mac app, Compare current contents refreshes the report and change labels together. Findings defaults to All, with current new/changed assets first; New and changed is an optional view, while full risk and disposition counts remain visible. Removed assets stay in comparison details. Cancellation retains the previous complete result. A new scan, scope change or baseline acceptance clears the labels and filter.
+
+The Mac app consistently excludes its root `.agent-audit-baseline.json` in scans, manual decisions and comparisons. Previous decisions made under a different scope expire without deleting history. CLI consumers wanting decisions to agree with comparison must use the same explicit `--exclude <baseline-file>` for scan and review commands. No severity, risk gate or coverage is lowered by a change label.

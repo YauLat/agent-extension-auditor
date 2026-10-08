@@ -54,6 +54,12 @@ export interface Finding {
   recommendation: string;
   evidence: FindingEvidence;
   remediation: RemediationDescriptor;
+  /** Review relevance only; never changes severity, coverage, or runtime activity. */
+  review?: { context: "current" | "example" | "disabled" | "archived"; priority: number };
+  /** Fixed rule guidance only; never copies inspected source. */
+  explanation?: { detected: string; impact: string; limits: string };
+  /** Manual content-bound decision only. Never suppresses risk or grants execution. */
+  disposition?: import("./review-state/index.js").Disposition;
 }
 
 export interface InventoryItem {

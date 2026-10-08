@@ -10,6 +10,7 @@ if (!destination) throw new Error("Usage: node scripts/package-runtime.mjs <dest
 await fs.mkdir(destination, { recursive: true });
 await fs.cp(path.join(root, "dist"), path.join(destination, "dist"), { recursive: true });
 await fs.writeFile(path.join(destination, "package.json"), JSON.stringify({ type: "module" }));
+await fs.cp(path.join(root, "docs", "schemas"), path.join(destination, "docs", "schemas"), { recursive: true });
 const dependency = "smol-toml";
 const source = path.join(root, "node_modules", dependency);
 const output = path.join(destination, "node_modules", dependency);

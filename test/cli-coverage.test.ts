@@ -45,5 +45,9 @@ describe("CLI coverage exit contract", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).summary.inventory.mcpServers).toBe(1);
     expect(await fs.readFile(path.join(bundled, "node_modules/smol-toml/LICENSE"), "utf8")).toContain("Redistribution");
+    for (const name of ["scan-report-v2", "cli-error-v2", "baseline-response-v2", "baseline-snapshot-v1"]) {
+      const schema = JSON.parse(await fs.readFile(path.join(bundled, "docs/schemas", `${name}.schema.json`), "utf8"));
+      expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
+    }
   });
 });

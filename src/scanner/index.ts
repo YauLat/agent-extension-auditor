@@ -27,6 +27,8 @@ import {
 import { exists } from "./files.js";
 import { ScanReader, isInside, type DiscoveredFile } from "./reader.js";
 import { getDefaultTargets } from "./targets.js";
+import { AuditOperationError } from "../util/errors.js";
+import { annotateReview } from "../review/index.js";
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_DEPTH = 6;
@@ -49,10 +51,10 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   if (!(await fs.stat(cwd).catch(() => undefined))?.isDirectory()) {
-    throw new Error("Workspace root is not an accessible directory.");
+    throw new AuditOperationError("INPUT_PATH_UNAVAILABLE", "Workspace root is not an accessible directory.");
   }
   if ((options.includeHome ?? true) && !(await fs.stat(home).catch(() => undefined))?.isDirectory()) {
-    throw new Error("Home root is not an accessible directory.");
+    throw new AuditOperationError("INPUT_PATH_UNAVAILABLE", "Home root is not an accessible directory.");
   }
   const pathFilter = buildPathFilter(options, cwd, home);
   for (const key of ["includePaths", "excludePaths"] as const) {
@@ -65,7 +67,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const explicitTargets: TargetLocation[] = [];
   for (const value of options.paths ?? []) {
     const resolved = await fs.realpath(path.resolve(cwd, expandHome(value, home))).catch(() => undefined);
-    if (!resolved) throw new Error("Explicit scan path is not accessible.");
+    if (!resolved) throw new AuditOperationError("INPUT_PATH_UNAVAILABLE", "Explicit scan path is not accessible.");
     const stat = await fs.stat(resolved);
     explicitTargets.push({ path: resolved, kind: stat.isDirectory() || ["package.json", "plugin.json"].includes(path.basename(resolved)) ? "plugin-root" : path.basename(resolved) === "SKILL.md" ? "skill-root"
       : resolved.endsWith(".toml") ? "toml-config" : resolved.endsWith(".json") ? "agent-config" : "workspace-config", reason: "Explicit scan path" });
@@ -74,7 +76,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const targets = allTargets.filter((target) => targetMatchesPathFilter(target.path, pathFilter));
   const reader = new ScanReader(targets, home, {
     includeHome: explicitTargets.length ? false : options.includeHome ?? true,
-    ...pathFilter, explicitPaths: explicitTargets.map(t => t.path), includePaths: pathFilter.includePaths.length ? pathFilter.includePaths : explicitTargets.map(t => t.path), maxFileBytes, maxDepth, defaultExcludedDirectories: ["node_modules", ".git", "dist"]
+    ...pathFilter, explicitPaths: explicitTargets.map(t => t.path), includePaths: pathFilter.includePaths.length ? pathFilter.includePaths : explicitTargets.map(t => t.path), maxFileBytes, maxDepth, defaultExcludedDirectories: ["node_modules", ".git", "dist", ".agent-audit-reviews"]
   });
   for (const target of allTargets) {
     if (!targets.includes(target)) reader.diagnostic("user_excluded", target.path, "target");
@@ -82,7 +84,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
   const scannedLocations = await buildScannedLocations(targets, home);
   const context: ScanContext = {
     cwd, home, maxFileBytes, maxDepth, pathFilter, reader,
-    inventory: [], findings: [], findingIDs: new Set(), findingOccurrences: new Map(), processed: new Set()
+    inventory: [], findings: [], findingIDs: new Set(), structuredSecretFiles: new Set(), documentedExamples: new Map(), findingOccurrences: new Map(), processed: new Set()
   };
   // Discover all aliases before analysis so canonical assets retain every agent association.
   const discovered = new Map<TargetLocation, DiscoveredFile[]>();
@@ -112,6 +114,7 @@ export async function scanAgentExtensions(options: ScanOptions = {}): Promise<Sc
     await scanTextFile(file.path, context);
   }
   addDuplicateSkillFindings(context);
+  annotateReview(context.findings, context.inventory);
 
   const findings = sortFindings(context.findings);
   const inventory = context.inventory.sort((a, b) => a.displayPath.localeCompare(b.displayPath));
@@ -159,6 +162,8 @@ interface ScanContext {
   inventory: InventoryItem[];
   findings: Finding[];
   findingIDs: Set<string>;
+  structuredSecretFiles: Set<string>;
+  documentedExamples: Map<string, { start: number; end: number }[]>;
   findingOccurrences: Map<string, number>;
   reader: ScanReader;
   processed: Set<string>;
@@ -426,13 +431,37 @@ async function scanConfig(filePath: string, context: ScanContext, toml = false, 
     return;
   }
   findMcpServers(parsed, filePath, context);
-  if (flatMcp && !Object.hasOwn(parsed, "mcpServers")) {
+  const inspectedFlatServers = new Set<string>();
+  if (flatMcp && !Object.hasOwn(parsed, "mcpServers") && !Object.hasOwn(parsed, "mcp_servers")) {
     for (const [name, config] of Object.entries(parsed)) {
-      if (isRecord(config)) inspectMcpServer(name, config, filePath, context, name);
+      if (isRecord(config)) {
+        inspectMcpServer(name, config, filePath, context, name);
+        inspectedFlatServers.add(name);
+      }
     }
   }
   detectJsonHooks(parsed, filePath, context);
+  // Review remaining config branches structurally as well, so deduplicating MCP
+  // text references cannot hide unrelated credentials elsewhere in this file.
+  detectNonMcpSecrets(parsed, filePath, context, item.id, "", 0, true, inspectedFlatServers);
   detectTextPatterns(content, filePath, context, item.id, configuredEvidence, false);
+}
+
+function detectNonMcpSecrets(value: unknown, filePath: string, context: ScanContext, itemId: string, keyPath = "", depth = 0, skipMcpContainers = true, excludedPaths?: ReadonlySet<string>): void {
+  if (depth > 64) { context.reader.diagnostic("structure_limit", filePath); return; }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => detectNonMcpSecrets(entry, filePath, context, itemId, `${keyPath}[${index}]`, depth + 1, skipMcpContainers, excludedPaths));
+  } else if (isRecord(value)) {
+    for (const [key, entry] of Object.entries(value)) {
+      if (skipMcpContainers && (key === "mcpServers" || key === "mcp_servers")) continue;
+      const child = keyPath ? `${keyPath}.${key}` : key;
+      if (excludedPaths?.has(child)) continue;
+      detectRecordSecretReferences(key, filePath, context, itemId, child);
+      detectNonMcpSecrets(entry, filePath, context, itemId, child, depth + 1, skipMcpContainers, excludedPaths);
+    }
+  } else {
+    detectRecordSecretReferences(value, filePath, context, itemId, keyPath);
+  }
 }
 
 async function scanTextFile(filePath: string, context: ScanContext): Promise<void> {
@@ -531,7 +560,9 @@ function inspectMcpServer(
     });
   }
 
-  detectRecordSecretReferences(serverConfig, filePath, context, item.id, keyPath);
+  // Preserve separate credential locations; key and value signals at the same
+  // location share a finding ID, without a second config-owned copy.
+  detectNonMcpSecrets(serverConfig, filePath, context, item.id, keyPath, 0, false);
 }
 
 function detectJsonHooks(value: unknown, filePath: string, context: ScanContext, keyPath = "", inHooks = false, depth = 0): void {
@@ -589,12 +620,17 @@ function detectRecordSecretReferences(
 
 function detectTextPatterns(content: string, filePath: string, context: ScanContext, itemId?: string,
   evidence: FindingEvidence = documentedEvidence, detectHookMention = true): void {
+  if (evidence.kind === "documented") {
+    const ranges = documentedExampleRanges(content);
+    if (ranges.length) context.documentedExamples.set(filePath, ranges);
+  }
   addRegexFinding(content, remoteScriptPattern, context, "REMOTE_SCRIPT_EXECUTION", filePath, {
     itemId,
     message: "File contains a remote script execution pattern.",
     evidence
   });
-  addRegexFinding(content, secretNamePattern, context, "SECRET_PATTERN_REFERENCE", filePath, {
+  const hasStructuredSecret = context.structuredSecretFiles.has(filePath);
+  if (!hasStructuredSecret) addRegexFinding(content, secretNamePattern, context, "SECRET_PATTERN_REFERENCE", filePath, {
     itemId,
     message: "File contains secret-like references. Secret values are not printed.",
     evidence
@@ -626,8 +662,35 @@ function detectTextPatterns(content: string, filePath: string, context: ScanCont
   if (evidence.kind === "documented") {
     addRegexFinding(content, /\b(?:ignore|bypass|override)\b[^\n]{0,100}\b(?:instructions|safety|safeguards)\b[\s\S]{0,320}?(?:\b(?:private|secrets?|credentials?|tokens?)\b[\s\S]{0,160}\b(?:send|upload|post|exfiltrate)\b|\b(?:send|upload|post|exfiltrate)\b[\s\S]{0,160}\b(?:private|secrets?|credentials?|tokens?)\b)/i,
       context, "PROMPT_INJECTION_EXFILTRATION", filePath, { itemId, message: "Text combines instruction bypass with a request to transmit private data. Review surrounding context; this is a bounded heuristic.", evidence });
+    addRegexFinding(content, /(?:忽略|繞過|绕过|無視|无视|覆蓋|覆盖)[^\n。！？]{0,80}(?:指令|規則|规则|安全|限制)[^\n。！？]{0,240}(?:(?:私人|私密|憑證|凭据|密鑰|密钥|秘密|令牌)[^\n。！？]{0,100}(?:上傳|上传|發送|发送|傳送|传送|外傳|外传)|(?:上傳|上传|發送|发送|傳送|传送|外傳|外传)[^\n。！？]{0,100}(?:私人|私密|憑證|凭据|密鑰|密钥|秘密|令牌))/i,
+      context, "PROMPT_INJECTION_EXFILTRATION", filePath, {itemId, message: "Text combines instruction bypass with a request to transmit private data. Review surrounding context; this is a bounded heuristic.", evidence});
+  } else if (evidence.kind === "code") {
+    for (const index of environmentUploadCalls(content)) {
+      addFinding(context, "ENV_NETWORK_EXFILTRATION", filePath, {itemId, line:getLineNumber(content,index), evidence,
+        message:"An HTTP upload call contains a direct environment reference. Review the payload and destination; static proximity does not prove runtime data flow."});
+    }
   }
   resetRegexes();
+}
+
+// Mask string literals and comments, preserving offsets; then inspect only each
+// bounded, balanced upload call. Never bridge two unrelated statements/calls.
+function environmentUploadCalls(content: string): number[] {
+  const masked = content.replace(/(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*)/g,
+    value => value.replace(/[^\n]/g, " "));
+  const sink = /\b(?:requests\.(?:post|put|patch)|axios\.(?:post|put|patch)|fetch)\s*\(/g;
+  const indices: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = sink.exec(masked)) && indices.length < 20) {
+    let depth = 1, end = sink.lastIndex;
+    const limit = Math.min(masked.length, end + 1000);
+    for (; end < limit && depth > 0; end++) {
+      if (masked[end] === "(") depth++;
+      else if (masked[end] === ")") depth--;
+    }
+    if (depth === 0 && /\b(?:process\s*\.\s*env|os\s*\.\s*environ)\b/.test(masked.slice(sink.lastIndex, end))) indices.push(match.index);
+  }
+  return indices;
 }
 
 function addRegexFinding(
@@ -649,12 +712,32 @@ function addRegexFinding(
     addFinding(context, ruleId, filePath, {
       itemId: details.itemId, line: getLineNumber(content, match.index),
       message: prohibited ? "Documented prohibition contains this pattern; retained for context, not treated as an execution instruction." : details.message,
-      evidence: details.evidence, severity: prohibited ? "info" : undefined
+      evidence: details.evidence, severity: prohibited ? "info" : undefined,
+      reviewContext: context.documentedExamples.get(filePath)?.some(range => match!.index >= range.start && match!.index < range.end) ? "example" : undefined
     });
     emitted++;
     if (!match[0].length) matcher.lastIndex++;
   }
   if (emitted >= 20 && match) context.reader.diagnostic("structure_limit", filePath);
+}
+
+function documentedExampleRanges(content: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  const fences = /^([\t ]*)(`{3,}|~{3,})[^\n]*\n/gm;
+  let opening: RegExpExecArray | null;
+  while ((opening = fences.exec(content))) {
+    const marker = opening[2];
+    const close = new RegExp(`^[\\t ]*${marker[0]}{${marker.length},}[\\t ]*$`, "gm");
+    close.lastIndex = fences.lastIndex;
+    const closing = close.exec(content);
+    if (!closing) break;
+    const prefix = content.slice(Math.max(0, opening.index - 200), opening.index).split(/\n\s*\n/).at(-1) ?? "";
+    if (/(?:unsafe example|anti-pattern|do not execute|dangerous example|危險示例|危险示例|不安全示例|反例)/i.test(prefix)) {
+      ranges.push({start:fences.lastIndex,end:closing.index});
+    }
+    fences.lastIndex = close.lastIndex;
+  }
+  return ranges;
 }
 
 const configuredEvidence: FindingEvidence = { kind: "configured", confidence: "high", active: "unknown" };
@@ -707,12 +790,13 @@ function addFinding(
   context: ScanContext,
   ruleId: string,
   filePath: string,
-  details: { itemId?: string; keyPath?: string; line?: number; message: string; evidence?: FindingEvidence; severity?: Severity }
+  details: { itemId?: string; keyPath?: string; line?: number; message: string; evidence?: FindingEvidence; severity?: Severity; reviewContext?: "example" }
 ): void {
   const rule = getRule(ruleId);
   const id = stableId("finding", ruleId, filePath, details.keyPath ?? "", String(details.line ?? ""), details.itemId ?? "", details.severity ?? "");
   if (context.findingIDs.has(id)) return;
   context.findingIDs.add(id);
+  if (ruleId === "SECRET_PATTERN_REFERENCE" && details.keyPath) context.structuredSecretFiles.add(filePath);
   const occurrenceKey = JSON.stringify([ruleId, filePath, details.itemId]);
   const occurrence = context.findingOccurrences.get(occurrenceKey) ?? 0;
   context.findingOccurrences.set(occurrenceKey, occurrence + 1);
@@ -726,6 +810,8 @@ function addFinding(
     message: details.message,
     itemId: details.itemId,
     recommendation: rule.recommended_action,
+    explanation: { detected: rule.what_it_detects, impact: rule.why_it_matters, limits: rule.false_positive_notes },
+    ...(details.reviewContext ? {review:{context:details.reviewContext,priority:3}} : {}),
     evidence:
       details.evidence ??
       (details.keyPath
