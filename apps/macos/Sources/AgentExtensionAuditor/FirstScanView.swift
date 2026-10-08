@@ -12,7 +12,6 @@ struct FirstScanView: View {
                     subtitle: chinese ? "選擇範圍 → 掃描 → 檢視證據 → 比較基準" : "Choose scope → Scan → Review evidence → Compare baseline",
                     symbol: "shield.lefthalf.filled"
                 )
-                PrivacyStrip(language: store.language)
                 VStack(alignment: .leading, spacing: 14) {
                     Text(chinese ? "1. 選擇要檢查的資料夾" : "1. Choose a folder to inspect").font(.headline)
                     HStack {
@@ -37,7 +36,7 @@ struct FirstScanView: View {
                 HStack {
                     Button { Task { await store.scan() } } label: {
                         Label(chinese ? "開始掃描" : "Start scan", systemImage: "magnifyingglass")
-                    }.buttonStyle(.borderedProminent).controlSize(.large)
+                    }.buttonStyle(AuditorPrimaryButtonStyle())
                     Text(chinese ? "完成後先檢視優先項目；基準只記錄人工檢視，不代表安全認證。" : "Review priority findings first. A baseline records manual review, not a safety certification.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -47,7 +46,8 @@ struct FirstScanView: View {
                         Button(chinese ? "檢查引擎設定" : "Check engine settings") { store.selectedSection = .settings }
                     }.font(.callout)
                 }
-            }.padding(28).frame(maxWidth: 1100, alignment: .leading)
+                PrivacyStrip(language: store.language)
+            }.padding(24).frame(maxWidth: 1100, alignment: .leading)
         }
     }
 }

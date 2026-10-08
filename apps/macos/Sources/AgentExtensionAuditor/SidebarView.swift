@@ -27,7 +27,7 @@ struct SidebarView: View {
 
             privacyFooter
         }
-        .background(.thinMaterial)
+        .background(AuditorTheme.canvas)
     }
 
     private var brand: some View {
@@ -40,7 +40,7 @@ struct SidebarView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AGENT AUDITOR")
                     .font(.headline.weight(.bold))
-                Text("LOCAL SECURITY")
+                Text(store.language == .zhHant ? "本機擴充檢視" : "LOCAL EXTENSION REVIEW")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }

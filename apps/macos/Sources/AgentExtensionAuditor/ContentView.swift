@@ -8,7 +8,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 232, max: 240)
         } detail: {
             VStack(spacing: 0) {
                 if let started = store.scanStartedAt {
@@ -20,7 +20,7 @@ struct ContentView: View {
                     Text(store.scanMessage).font(.caption).padding(8)
                 }
                 if let report = store.report {
-                    CoverageBanner(report: report, language: store.language) {
+                    CoverageBanner(report: report, language: store.language, request: store.reportRequest, freshness: store.reportScopeFreshness) {
                         store.selectedSection = .locations
                     }
                 }

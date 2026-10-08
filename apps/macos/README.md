@@ -10,7 +10,7 @@ The repository never stores a signing identity, certificate, private key, Apple 
 
 ## Requirements
 
-- macOS 14 or newer. macOS 26 uses native Liquid Glass; older supported versions use SwiftUI material.
+- macOS 14 or newer. Data cards use opaque, adaptive light/dark surfaces; window chrome and controls follow macOS.
 - Xcode 26 to build the current source.
 - Node.js 20 or newer to run the bundled `agent-audit` scanner.
 
@@ -60,5 +60,7 @@ AGENT_AUDIT_BACKUP_DIR=/path/to/private/backup-directory
 ```
 
 Scan reports are decoded in memory. A temporary JSON report is removed as soon as decoding finishes.
+
+The native dashboard shows assets, full findings and pending reviews together, with priority review before baseline administration. Narrow windows stack the action rail and present finding details in a native sheet. Known-rule Chinese titles are searchable; English scanner text remains available in details, and custom rules preserve their original text. A retained report explicitly identifies its inspected scope when the next selected scan scope changes.
 
 The app can guide one explicit repair: add a user-supplied HTTPS source URL to `SKILL.md` for an `UNKNOWN_SOURCE` finding. It previews the change, asks for confirmation, verifies the preview hash, creates a private local backup, applies atomically, rescans, and offers guarded rollback. All shell, hook, credential, network, package-script, and write/delete findings remain manual-review only. The app never installs, deletes, enables, disables, or quarantines extensions.

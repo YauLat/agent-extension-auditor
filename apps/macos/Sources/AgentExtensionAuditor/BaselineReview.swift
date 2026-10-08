@@ -81,18 +81,9 @@ struct BaselineReviewView: View {
             Text(copy("人工檢視基準", "Manual review baseline")).font(.headline)
             Text(copy("比較新增、修改和移除的擴充。接受只記錄本次檢視；不會啟用擴充或認證安全。", "Compare added, changed and removed extensions. Acceptance records review; it does not enable or certify extensions."))
                 .font(.caption).foregroundStyle(.secondary)
-            HStack {
-                Button(copy("比較目前內容", "Compare current contents")) { Task { await store.reviewBaseline() } }
-                    .disabled(store.baselineBusy || store.isScanning)
-                if let review = store.baselineReview {
-                    Button(review.exists ? copy("接受已檢視變更", "Accept reviewed changes") : copy("建立已檢視基準", "Create reviewed baseline")) {
-                        Task { await store.acceptBaseline() }
-                    }.disabled(!store.canAcceptBaseline)
-                }
-                if store.baselineBusy { ProgressView().controlSize(.small) }
-                if store.baselineBusy {
-                    Button(copy("取消比較", "Cancel comparison"), action: store.cancelBaselineReview)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack { actionButtons }.fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 8) { actionButtons }
             }
             if let review = store.baselineReview {
                 if let comparedAt = store.comparisonGeneratedAt {
@@ -124,6 +115,20 @@ struct BaselineReviewView: View {
             }
             if !store.baselineMessage.isEmpty { Text(store.baselineMessage).font(.caption) }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).auditorGlass()
+    }
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button(copy("比較目前內容", "Compare current contents")) { Task { await store.reviewBaseline() } }
+            .disabled(store.baselineBusy || store.isScanning)
+        if let review = store.baselineReview {
+            Button(review.exists ? copy("接受已檢視變更", "Accept reviewed changes") : copy("建立已檢視基準", "Create reviewed baseline")) {
+                Task { await store.acceptBaseline() }
+            }.disabled(!store.canAcceptBaseline)
+        }
+        if store.baselineBusy {
+            ProgressView().controlSize(.small)
+            Button(copy("取消比較", "Cancel comparison"), action: store.cancelBaselineReview)
+        }
     }
     private func assetRows(_ assets: [BaselineAssetLabel], prefix: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {

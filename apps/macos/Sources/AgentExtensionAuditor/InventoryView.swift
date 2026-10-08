@@ -50,7 +50,7 @@ struct InventoryView: View {
                         }
                     }
                 }
-                .padding(28)
+                .padding(24)
                 .frame(maxWidth: 1440, alignment: .leading)
         }
         .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
@@ -166,7 +166,7 @@ private struct InventoryCard: View {
             .contentShape(Rectangle())
             .auditorGlass(tint: highestSeverity?.color ?? AuditorTheme.accent)
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 18)
                     .stroke(selected ? AuditorTheme.accent : Color.clear, lineWidth: 2)
             )
         }

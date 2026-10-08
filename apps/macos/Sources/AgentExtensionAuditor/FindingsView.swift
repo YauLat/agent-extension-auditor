@@ -17,7 +17,7 @@ struct FindingsView: View {
         VStack(alignment: .leading, spacing: 16) {
                 PageHeader(
                     title: text(.findings, language: store.language),
-                    subtitle: "\(findings.count.formatted()) · \(text(.reviewQueue, language: store.language)) · \(reviewCountsText)",
+                    subtitle: "\(store.language == .zhHant ? "符合篩選" : "Matching filters"): \(findings.count.formatted()) · \(reviewCountsText)",
                     symbol: "list.bullet.rectangle.portrait.fill"
                 )
                 .padding(.horizontal, 24)
@@ -35,11 +35,16 @@ struct FindingsView: View {
                     .padding(.horizontal, 24)
 
                 if findings.isEmpty {
-                    EmptyStateView(
-                        title: store.selectedChangeFilter == .newAndChanged ? (store.language == .zhHant ? "沒有符合條件的新增或修改發現" : "No matching new or changed findings") : text(.noFindings, language: store.language),
-                        detail: store.selectedChangeFilter == .newAndChanged ? (store.language == .zhHant ? "完整報告仍可能有風險或無法比較的項目；切回全部檢視。" : "The full report may still contain risks or unmatched items. Switch to All to review them.") : text(.noFindingsDetail, language: store.language),
-                        symbol: store.selectedChangeFilter == .newAndChanged ? "line.3.horizontal.decrease.circle" : "checkmark.shield.fill"
-                    )
+                    VStack {
+                        EmptyStateView(
+                            title: (store.report?.findings.isEmpty == false) ? (store.language == .zhHant ? "沒有符合篩選的發現" : "No matching findings") : text(.noFindings, language: store.language),
+                            detail: (store.report?.findings.isEmpty == false) ? (store.language == .zhHant ? "篩選隱藏了結果，完整報告的風險仍保留。" : "Filters hide the results; risks remain in the full report.") : (store.language == .zhHant ? "本次沒有回報發現；請核對掃描範圍及未檢查項目。" : "No findings reported. Check scope and uninspected items."),
+                            symbol: (store.report?.findings.isEmpty == false) ? "line.3.horizontal.decrease.circle" : "text.magnifyingglass"
+                        )
+                        if store.report?.findings.isEmpty == false {
+                            Button(text(.clearFilters, language: store.language), action: store.clearFilters).padding(.bottom, 24)
+                        }
+                    }
                 } else {
                     List(selection: $store.selectedFindingID) {
                         ForEach(findings) { finding in
@@ -48,6 +53,7 @@ struct FindingsView: View {
                         }
                     }
                     .listStyle(.inset)
+                    .scrollContentBackground(.hidden)
                 }
         }
         .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
@@ -144,39 +150,27 @@ private struct FindingListRow: View {
     let changeState: AssetChangeState?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(finding.severity.color)
-                .frame(width: 4, height: 54)
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    SeverityBadge(severity: finding.severity, language: language)
-                    Text(finding.ruleId)
-                        .font(.caption.monospaced().weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                Text(finding.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(finding.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Text(finding.reviewLabel(language: language))
-                    .font(.caption2).foregroundStyle(.secondary)
-                if let disposition = finding.disposition {
-                    Text(disposition.label(language: language)).font(.caption2).foregroundStyle(.secondary)
-                }
-                if let changeState { Text(changeState.label(language: language)).font(.caption2).foregroundStyle(.secondary) }
-                Text(locationText(finding.location))
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                SeverityBadge(severity: finding.severity, language: language)
+                Text(finding.displayTitle(language: language)).font(.callout.weight(.semibold)).lineLimit(2)
+                Spacer(minLength: 0)
             }
-        }
-        .padding(.vertical, 7)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { metadata }
+                VStack(alignment: .leading, spacing: 4) { metadata }
+            }.font(.caption).foregroundStyle(AuditorTheme.secondary)
+            Text(locationText(finding.location)).font(.caption.monospaced())
+                .foregroundStyle(AuditorTheme.secondary).lineLimit(1).truncationMode(.middle)
+                .help(finding.location.path)
+        }.padding(.vertical, 10).help(finding.title)
+    }
+
+    @ViewBuilder private var metadata: some View {
+        Text(finding.ruleId).font(.caption.monospaced())
+        Text(finding.reviewLabel(language: language))
+        if let disposition = finding.disposition { Text(disposition.label(language: language)) }
+        if let changeState { Text(changeState.label(language: language)) }
     }
 
     private func locationText(_ location: FindingLocation) -> String {
@@ -210,89 +204,69 @@ struct FindingDetailView: View {
                     .help(text(.close, language: store.language))
                 }
 
-                Text(finding.title)
-                    .font(.title3.weight(.bold))
-                    .textSelection(.enabled)
-
-                DetailField(
-                    title: text(.message, language: store.language),
-                    value: finding.message
-                )
-                Text(finding.reviewLabel(language: store.language)).font(.caption).foregroundStyle(.secondary)
-                manualReview
-                if let explanation = finding.explanation {
-                    DetailField(title: store.language == .zhHant ? "命中原因" : "What matched", value: explanation.detected)
-                    DetailField(title: store.language == .zhHant ? "可能影響" : "Potential impact", value: explanation.impact)
-                    DetailField(title: store.language == .zhHant ? "判定限制" : "Detection limits", value: explanation.limits)
-                }
-                DetailField(
-                    title: text(.location, language: store.language),
-                    value: locationText,
-                    monospaced: true
-                )
-
-                HStack(spacing: 10) {
-                    Button {
-                        store.openPath(finding.location.path)
-                    } label: {
-                        Label(text(.openFile, language: store.language), systemImage: "doc.text")
-                    }
-                    Button {
-                        store.revealPath(finding.location.path)
-                    } label: {
-                        Label(text(.showInFinder, language: store.language), systemImage: "folder")
-                    }
-                    Button {
-                        store.copyPath(finding.location.path)
-                    } label: {
-                        Label(text(.copyPath, language: store.language), systemImage: "doc.on.doc")
-                    }
-                }
-
-                if let evidenceText {
-                    DetailField(
-                        title: text(.evidence, language: store.language),
-                        value: evidenceText,
-                        accent: AuditorTheme.accent
-                    )
-                }
-
-                DetailField(
-                    title: text(.recommendation, language: store.language),
-                    value: finding.recommendation,
-                    accent: finding.severity.color
-                )
-
-                if let remediation = finding.remediation {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(text(.remediation, language: store.language))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        if remediation.summary != finding.recommendation {
-                            Text(remediation.summary)
-                                .font(.callout)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(finding.displayTitle(language: store.language))
+                    .font(.title3.weight(.semibold)).textSelection(.enabled)
+                Text(finding.reviewLabel(language: store.language)).font(.caption).foregroundStyle(AuditorTheme.secondary)
+                VStack(alignment: .leading, spacing: 16) {
+                    DetailField(title: text(.location, language: store.language), value: locationText, monospaced: true, card: false)
+                    HStack(spacing: 16) {
+                        Button { store.openPath(finding.location.path) } label: {
+                            Label(text(.openFile, language: store.language), systemImage: "doc.text")
                         }
+                        Button { store.revealPath(finding.location.path) } label: {
+                            Image(systemName: "folder")
+                        }.help(text(.showInFinder, language: store.language)).accessibilityLabel(text(.showInFinder, language: store.language))
+                        Button { store.copyPath(finding.location.path) } label: {
+                            Image(systemName: "doc.on.doc")
+                        }.help(text(.copyPath, language: store.language)).accessibilityLabel(text(.copyPath, language: store.language))
+                    }
+                    if let evidenceText {
+                        Divider()
+                        DetailField(title: text(.evidence, language: store.language), value: evidenceText, card: false)
+                    }
+                }.padding(16).auditorGlass()
 
+                VStack(alignment: .leading, spacing: 16) {
+                    if let guidance = finding.reviewGuidance(language: store.language) {
+                        DetailField(title: "檢視指引 · 靜態模式，不代表已執行", value: guidance, card: false)
+                        DisclosureGroup("掃描器原文 · English") { originalExplanation.padding(.top, 12) }
+                    } else { originalExplanation }
+                }.padding(16).auditorGlass()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    manualReview
+                    if let remediation = finding.remediation {
+                        Divider()
+                        Text(text(.remediation, language: store.language)).font(.headline)
+                        if remediation.summary != finding.recommendation {
+                            Text(remediation.summary).font(.callout).textSelection(.enabled)
+                        }
                         if remediation.mode == .guided {
-                            Button {
-                                store.activeRepairFinding = finding
-                            } label: {
+                            Button { store.activeRepairFinding = finding } label: {
                                 Label(text(.guidedRepair, language: store.language), systemImage: "wrench.and.screwdriver")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(store.findingReviewBusy || store.isScanning || store.baselineBusy)
+                            }.buttonStyle(.bordered)
+                                .disabled(store.findingReviewBusy || store.isScanning || store.baselineBusy)
                         } else {
                             Label(text(.manualReview, language: store.language), systemImage: "person.crop.circle.badge.checkmark")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(AuditorTheme.secondary)
                         }
                     }
-                    .padding(12)
-                    .auditorGlass(tint: remediation.mode == .guided ? AuditorTheme.accent : nil)
-                }
+                }.padding(16).auditorGlass()
             }
             .padding(20)
+        }
+    }
+
+    private var originalExplanation: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            DetailField(title: store.language == .zhHant ? "原始標題" : "Original title", value: finding.title, card: false)
+            DetailField(title: text(.message, language: store.language), value: finding.message, card: false)
+            if let explanation = finding.explanation {
+                DetailField(title: store.language == .zhHant ? "命中原因" : "What matched", value: explanation.detected, card: false)
+                DetailField(title: store.language == .zhHant ? "可能影響" : "Potential impact", value: explanation.impact, card: false)
+                DetailField(title: store.language == .zhHant ? "判定限制" : "Detection limits", value: explanation.limits, card: false)
+            }
+            DetailField(title: text(.recommendation, language: store.language), value: finding.recommendation, card: false)
         }
     }
 
@@ -324,7 +298,7 @@ struct FindingDetailView: View {
     }
 
     private var locationText: String {
-        var parts = [finding.location.displayPath]
+        var parts = [finding.location.path]
         if let line = finding.location.line {
             parts[0] += ":\(line)"
         }
@@ -535,8 +509,13 @@ struct DetailField: View {
     let value: String
     var monospaced = false
     var accent: Color?
+    var card = true
 
     var body: some View {
+        if card { content.padding(12).auditorGlass(tint: accent) } else { content }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -546,7 +525,5 @@ struct DetailField: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
-        .auditorGlass(tint: accent)
     }
 }

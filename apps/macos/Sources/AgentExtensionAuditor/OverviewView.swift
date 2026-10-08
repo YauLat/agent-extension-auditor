@@ -2,217 +2,128 @@ import SwiftUI
 
 struct OverviewView: View {
     @EnvironmentObject private var store: AuditStore
+    private var chinese: Bool { store.language == .zhHant }
 
     var body: some View {
         if let report = store.report {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    PageHeader(
-                        title: text(.overview, language: store.language),
-                        subtitle: "agent-audit \(report.version) · \(formattedScanDate(report.generatedAt))",
-                        symbol: "rectangle.3.group.fill"
-                    )
-
+                    PageHeader(title: text(.overview, language: store.language),
+                               subtitle: "agent-audit \(report.version) · \(formattedComparisonDate(report.generatedAt))",
+                               symbol: "rectangle.3.group.fill")
+                    HStack(spacing: 0) {
+                        summaryMetric(chinese ? "已掃描資產" : "Scanned assets", count: report.summary.inventory.total, symbol: "square.stack.3d.up")
+                        Divider().frame(height: 44)
+                        summaryMetric(text(.totalFindings, language: store.language), count: report.summary.findings.total, symbol: "exclamationmark.bubble")
+                        Divider().frame(height: 44)
+                        summaryMetric(chinese ? "待人工審閱" : "Awaiting review", count: store.dispositionCounts.needsReview, symbol: "person.crop.circle.badge.clock")
+                    }.padding(8).auditorGlass()
+                    if store.windowWidth >= 1_200 {
+                        HStack(alignment: .top, spacing: 24) {
+                            mainColumn(report).frame(maxWidth: .infinity)
+                            actionRail(report).frame(width: 320)
+                        }
+                    } else {
+                        mainColumn(report)
+                        actionRail(report)
+                    }
                     PrivacyStrip(language: store.language)
-                    BaselineReviewView()
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(store.language == .zhHant ? "優先檢視的 5 項發現" : "First 5 findings to review").font(.headline)
-                        Text(store.canFilterChanges ? (store.language == .zhHant ? "先檢視目前資產的新增及修改，再查看全部風險。嚴重程度不變。" : "New and changed current assets come first; all risks remain available. Severity is unchanged.") : (store.language == .zhHant ? "先檢視目前程式與設定；封存、停用及明示示例仍保留全部警告。嚴重程度不變。" : "Current code and configuration come first. Archive, disabled and explicit example findings remain available; severity is unchanged."))
-                            .font(.caption).foregroundStyle(.secondary)
-                        ForEach(store.prioritizedFindings()) { finding in
-                            Button {
-                                store.clearFilters()
-                                store.selectedFindingID = finding.id
-                                store.selectedSection = .findings
-                            } label: {
-                                HStack(alignment: .top) {
-                                    SeverityBadge(severity: finding.severity, language: store.language)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(finding.title).font(.subheadline.weight(.medium))
-                                        Text(finding.location.displayPath).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                        Text(finding.reviewLabel(language: store.language)).font(.caption2).foregroundStyle(.secondary)
-                                        Text(finding.recommendation).font(.caption).lineLimit(2)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.right")
-                                }.frame(maxWidth: .infinity, alignment: .leading)
-                            }.buttonStyle(.plain)
-                        }
-                    }.padding(16).auditorGlass()
-
-                    let incompleteCount = report.inventory.filter(\.hasIncompleteEvidence).count
-                    if incompleteCount > 0 {
-                        EvidenceNotice(
-                            title: "\(text(.coverageNotice, language: store.language)): \(incompleteCount.formatted())",
-                            detail: text(.coverageNoticeDetail, language: store.language)
-                        )
-                    }
-
-                    SectionTitle(
-                        title: text(.severityBreakdown, language: store.language),
-                        detail: "\(text(.totalFindings, language: store.language)): \(report.summary.findings.total.formatted())"
-                    )
-                    GlassGroup {
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 12)],
-                            spacing: 12
-                        ) {
-                            ForEach(Severity.allCases) { severity in
-                                SeverityMetricCard(
-                                    severity: severity,
-                                    count: report.summary.findings.count(for: severity),
-                                    language: store.language
-                                )
-                            }
-                        }
-                    }
-
-                    SectionTitle(
-                        title: text(.inventory, language: store.language),
-                        detail: report.summary.inventory.total.formatted()
-                    )
-                    GlassGroup {
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 240, maximum: 400), spacing: 12)],
-                            spacing: 12
-                        ) {
-                            ForEach(InventoryType.allCases) { type in
-                                InventoryMetricCard(
-                                    type: type,
-                                    count: report.summary.inventory.count(for: type),
-                                    language: store.language
-                                ) {
-                                    store.selectedSection = .inventory(type)
-                                }
-                            }
-                        }
-                    }
-
-                    SectionTitle(title: text(.recommendedActions, language: store.language))
-                    RecommendedActionsView(actions: report.recommendedActions, language: store.language)
-                }
-                .padding(28)
-                .frame(maxWidth: 1440, alignment: .leading)
+                }.padding(24).frame(maxWidth: 1440, alignment: .leading)
             }
-        } else {
-            FirstScanView()
-        }
+        } else { FirstScanView() }
     }
 
-    private func formattedScanDate(_ value: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: value) else { return value }
-        return date.formatted(date: .abbreviated, time: .shortened)
-    }
-}
-
-private struct SeverityMetricCard: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let severity: Severity
-    let count: Int
-    let language: AppLanguage
-
-    var body: some View {
+    private func summaryMetric(_ title: String, count: Int, symbol: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: severity.symbol)
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(severity.color)
-                .frame(width: 38, height: 38)
-                .background(severity.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(severity.label(language: language))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(count.formatted())
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: count)
+            Image(systemName: symbol).font(.title3).foregroundStyle(AuditorTheme.accent)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption).foregroundStyle(AuditorTheme.secondary)
+                Text(count.formatted()).font(.system(size: 26, weight: .semibold)).monospacedDigit()
             }
             Spacer(minLength: 0)
-        }
-        .padding(18)
-        .frame(minHeight: 96)
-        .auditorGlass(tint: severity.color)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
-}
 
-private struct InventoryMetricCard: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let type: InventoryType
-    let count: Int
-    let language: AppLanguage
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: type.symbol)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(AuditorTheme.accent)
-                    .frame(width: 38, height: 38)
-                    .background(AuditorTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(type.label(language: language))
-                        .font(.subheadline.weight(.semibold))
-                    Text(count.formatted())
-                        .contentTransition(.numericText())
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: count)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+    private func mainColumn(_ report: ScanReport) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            let priorities = store.prioritizedFindings()
+            VStack(alignment: .leading, spacing: 16) {
+                SectionTitle(title: chinese ? "優先檢視" : "Review first",
+                             detail: chinese ? "\(priorities.count) 項／全部 \(report.summary.findings.total.formatted()) 項" : "\(priorities.count) of \(report.summary.findings.total.formatted())")
+                Text(store.canFilterChanges
+                     ? (chinese ? "新增及修改優先；完整風險仍保留。" : "New and changed assets come first; all risks are retained.")
+                     : (chinese ? "先檢視目前內容；示例、停用及封存項目仍保留警告。" : "Current content comes first; examples, disabled and archived findings retain their warnings."))
+                    .font(.caption).foregroundStyle(AuditorTheme.secondary)
+                if priorities.isEmpty {
+                    Text(chinese ? "本次報告沒有回報發現；仍需核對掃描範圍及未檢查項目。" : "No findings reported. Check scope and uninspected items before drawing conclusions.")
+                        .font(.callout).foregroundStyle(AuditorTheme.secondary).padding(.vertical, 12)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(18)
-            .frame(minHeight: 92)
-            .contentShape(Rectangle())
-            .auditorGlass(tint: AuditorTheme.accent)
-        }
-        .buttonStyle(AuditorCardButtonStyle())
-    }
-}
+                ForEach(Array(priorities.enumerated()), id: \.element.id) { index, finding in
+                    if index > 0 { Divider() }
+                    Button {
+                        store.clearFilters(); store.selectedFindingID = finding.id; store.selectedSection = .findings
+                    } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .top, spacing: 10) {
+                                SeverityBadge(severity: finding.severity, language: store.language)
+                                Text(finding.displayTitle(language: store.language)).font(.callout.weight(.semibold)).multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                                Image(systemName: "arrow.up.right").foregroundStyle(AuditorTheme.secondary)
+                            }
+                            Text(finding.location.displayPath).font(.caption.monospaced()).foregroundStyle(AuditorTheme.secondary).lineLimit(1).truncationMode(.middle)
+                            Text(finding.reviewLabel(language: store.language)).font(.caption).foregroundStyle(AuditorTheme.secondary)
+                            Text(finding.reviewGuidance(language: store.language) ?? finding.recommendation).font(.callout).foregroundStyle(AuditorTheme.secondary).lineLimit(3).multilineTextAlignment(.leading)
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).help(finding.title)
+                }
+                Button(chinese ? "查看全部發現" : "Review all findings") {
+                    store.clearFilters(); store.selectedSection = .findings
+                }.buttonStyle(.bordered)
+            }.padding(20).auditorGlass()
 
-private struct RecommendedActionsView: View {
-    let actions: [String]
-    let language: AppLanguage
-
-    var body: some View {
-        if actions.isEmpty {
-            HStack(spacing: 10) {
-                Image(systemName: "checkmark.shield.fill")
-                    .foregroundStyle(Severity.low.color)
-                Text(text(.clean, language: language))
-                    .font(.subheadline.weight(.medium))
-            }
-            .padding(.vertical, 8)
-        } else {
-            VStack(spacing: 0) {
-                ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
-                    HStack(alignment: .top, spacing: 12) {
-                        Text("\(index + 1)")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AuditorTheme.accent)
-                            .frame(width: 24, height: 24)
-                            .background(AuditorTheme.accent.opacity(0.12), in: Circle())
-                        Text(action)
-                            .font(.subheadline)
-                            .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 14) {
+                SectionTitle(title: text(.severityBreakdown, language: store.language), detail: chinese ? "完整報告" : "Full report")
+                ForEach(Severity.allCases) { severity in
+                    HStack {
+                        SeverityBadge(severity: severity, language: store.language)
                         Spacer()
-                    }
-                    .padding(.vertical, 11)
-                    if index < actions.count - 1 {
-                        Divider().padding(.leading, 36)
+                        Text(report.summary.findings.count(for: severity).formatted()).font(.callout.weight(.semibold)).monospacedDigit()
                     }
                 }
+            }.padding(20).auditorGlass()
+            let incomplete = report.inventory.filter(\.hasIncompleteEvidence).count
+            if incomplete > 0 {
+                EvidenceNotice(title: "\(text(.coverageNotice, language: store.language)): \(incomplete.formatted())", detail: text(.coverageNoticeDetail, language: store.language))
             }
-        }
+            if !report.recommendedActions.isEmpty {
+                DisclosureGroup(text(.recommendedActions, language: store.language)) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(report.recommendedActions.enumerated()), id: \.offset) { _, action in
+                            Text(action).font(.callout).textSelection(.enabled)
+                        }
+                    }.padding(.top, 12)
+                }.padding(20).auditorGlass()
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func actionRail(_ report: ScanReport) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            BaselineReviewView()
+            VStack(alignment: .leading, spacing: 14) {
+                SectionTitle(title: text(.inventory, language: store.language), detail: report.summary.inventory.total.formatted())
+                ForEach(InventoryType.allCases) { type in
+                    Button { store.selectedSection = .inventory(type) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: type.symbol).frame(width: 20).foregroundStyle(AuditorTheme.accent)
+                            Text(type.label(language: store.language))
+                            Spacer()
+                            Text(report.summary.inventory.count(for: type).formatted()).monospacedDigit()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(AuditorTheme.secondary)
+                        }.font(.callout).padding(.vertical, 6).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+            }.padding(20).auditorGlass()
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

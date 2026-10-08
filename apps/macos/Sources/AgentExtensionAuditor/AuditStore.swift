@@ -23,6 +23,15 @@ final class AuditStore: ObservableObject {
     var canFilterChanges: Bool { baselineReview?.diff?.status == "comparable" && comparisonGeneratedAt != nil && !assetChanges.isEmpty }
     func changeState(for finding: Finding) -> AssetChangeState { finding.itemId.flatMap { assetChanges[$0] } ?? .unknown }
     @Published var report: ScanReport?
+    @Published private(set) var reportRequest: ScanRequest?
+    var reportScopeFreshness: ReportScopeFreshness {
+        guard report != nil, let inspected = reportRequest else { return .unknown }
+        let current = ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage)
+        return inspected.rootURL.standardizedFileURL == current.rootURL.standardizedFileURL
+            && inspected.directPackage == current.directPackage
+            && (inspected.includeHome && !inspected.directPackage) == (current.includeHome && !current.directPackage)
+            ? .current : .previous
+    }
     @Published var selectedSection: SidebarSection = .overview
     @Published var selectedSeverity: Severity?
     @Published var selectedRuleID: String?
@@ -91,11 +100,12 @@ final class AuditStore: ObservableObject {
         defer { isScanning = false; scanStartedAt = nil; scanCancellation = nil }
 
         do {
-            let result = try await runner.scan(ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage), cancellation: cancellation)
+            let request = ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage)
+            let result = try await runner.scan(request, cancellation: cancellation)
             try cancellation.checkCancellation()
             let index = await indexBuilder(result)
             try cancellation.checkCancellation()
-            applyReport(result, index: index)
+            applyReport(result, index: index, request: request)
             runtimeStatus = runner.runtimeStatus()
         } catch is CancellationError {
             scanMessage = language == .zhHant ? "掃描已取消；保留上一份報告。" : "Scan cancelled; the previous report is unchanged."
@@ -143,15 +153,16 @@ final class AuditStore: ObservableObject {
         selectedChangeFilter = .all
     }
 
-    func applyReport(_ newReport: ScanReport) {
-        applyReport(newReport, index: FindingReviewIndex(report: newReport))
+    func applyReport(_ newReport: ScanReport, request: ScanRequest? = nil) {
+        applyReport(newReport, index: FindingReviewIndex(report: newReport), request: request)
     }
 
-    private func applyReport(_ newReport: ScanReport, index: FindingReviewIndex) {
+    private func applyReport(_ newReport: ScanReport, index: FindingReviewIndex, request: ScanRequest? = nil) {
         invalidateBaselineReview()
         normalReviewIndex = index
         applyIndex(index)
         report = newReport
+        reportRequest = request
         let reviewed = newReport.findings.filter { $0.disposition?.effectiveState != nil && $0.disposition?.effectiveState != .needsReview }.count
         dispositionCounts = (newReport.findings.count - reviewed, reviewed)
         selectedInventoryID = nil
@@ -257,7 +268,7 @@ final class AuditStore: ObservableObject {
             try cancellation.checkCancellation()
             guard generation == baselineGeneration,
                   request == ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage) else { return }
-            applyReport(freshReport, index: index)
+            applyReport(freshReport, index: index, request: request)
             baselineReview = review
             baselineRequest = request
             comparisonGeneratedAt = freshReport.generatedAt
@@ -327,7 +338,7 @@ final class AuditStore: ObservableObject {
             let refreshed = try await runner.scan(request)
             let index = await indexBuilder(refreshed)
             guard request == ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage) else { return }
-            applyReport(refreshed, index: index)
+            applyReport(refreshed, index: index, request: request)
             findingReviewMessage = language == .zhHant ? "已儲存人工決定；severity、風險閘門及覆蓋率保留。" : "Manual decision saved; severity, risk gates and coverage are preserved."
         } catch {
             findingReviewPreview = nil

@@ -3,6 +3,8 @@ import SwiftUI
 struct CoverageBanner: View {
     let report: ScanReport
     let language: AppLanguage
+    var request: ScanRequest? = nil
+    var freshness: ReportScopeFreshness = .unknown
     let showDetails: () -> Void
 
     private var title: String {
@@ -15,10 +17,25 @@ struct CoverageBanner: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
+            if freshness == .previous {
+                Label(language == .zhHant ? "範圍已變更 · 下方保留上一份報告，請重新掃描" : "Scope changed · Previous report retained; scan again", systemImage: "exclamationmark.triangle")
+                    .font(.callout.weight(.semibold)).foregroundStyle(Severity.medium.color)
+            }
+            HStack(alignment: .top, spacing: 12) {
             Image(systemName: report.coverage?.status == "complete" ? "scope" : "exclamationmark.triangle")
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.callout.weight(.semibold))
+                if let request {
+                    Text((language == .zhHant ? "此報告：" : "This report: ") + request.rootURL.path
+                         + (request.directPackage ? (language == .zhHant ? " · 套件" : " · Package") : (language == .zhHant ? " · 已安裝擴充" : " · Installed extensions"))
+                         + (request.includeHome && !request.directPackage ? " · Home ✓" : " · Home −"))
+                        .font(.caption).foregroundStyle(AuditorTheme.secondary).lineLimit(1).truncationMode(.middle)
+                        .help(request.rootURL.path)
+                } else {
+                    Text(language == .zhHant ? "無法確認此報告與目前選擇範圍是否一致" : "This report cannot be bound to the currently selected scope")
+                        .font(.caption).foregroundStyle(AuditorTheme.secondary)
+                }
                 if let coverage = report.coverage {
                     Text(language == .zhHant
                          ? "已讀取 \(coverage.filesRead) 個檔案 · 未檢查 \(coverage.filesSkipped) 個檔案 · 跳過 \(coverage.directoriesSkipped) 個子目錄"
@@ -28,9 +45,12 @@ struct CoverageBanner: View {
             }
             Spacer()
             Button(language == .zhHant ? "查看範圍" : "View scope", action: showDetails)
+            }
         }
-        .padding(12)
-        .background(.regularMaterial)
+        .padding(.horizontal, 24).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AuditorTheme.surface)
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 

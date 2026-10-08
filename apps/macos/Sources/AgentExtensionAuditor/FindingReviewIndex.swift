@@ -174,6 +174,7 @@ struct FindingReviewIndex {
     private struct SearchFields: Hashable {
         let ruleID: String
         let title: String
+        let displayTitle: String
         let message: String
         let path: String
         let displayPath: String
@@ -182,6 +183,7 @@ struct FindingReviewIndex {
         init(_ finding: Finding) {
             ruleID = finding.ruleId
             title = finding.title
+            displayTitle = finding.displayTitle(language: .zhHant)
             message = finding.message
             path = finding.location.path
             displayPath = finding.location.displayPath
@@ -189,7 +191,7 @@ struct FindingReviewIndex {
         }
 
         var normalized: String {
-            [ruleID, title, message, path, displayPath, recommendation]
+            [ruleID, title, displayTitle, message, path, displayPath, recommendation]
                 .joined(separator: "\n").lowercased()
         }
     }
@@ -216,12 +218,13 @@ struct InventorySearchIndex {
             let findings = byItemID[item.id] ?? []
             var textIDs: Set<Int> = []
             for finding in findings {
-                let fields = Fields(ruleID: finding.ruleId, title: finding.title, message: finding.message)
+                let fields = Fields(ruleID: finding.ruleId, title: finding.title,
+                                    displayTitle: finding.displayTitle(language: .zhHant), message: finding.message)
                 if let existing = pool[fields] {
                     textIDs.insert(existing)
                 } else {
                     let position = texts.count
-                    texts.append([fields.ruleID, fields.title, fields.message].joined(separator: "\n").lowercased())
+                    texts.append([fields.ruleID, fields.title, fields.displayTitle, fields.message].joined(separator: "\n").lowercased())
                     pool[fields] = position
                     textIDs.insert(position)
                 }
@@ -245,6 +248,7 @@ struct InventorySearchIndex {
     private struct Fields: Hashable {
         let ruleID: String
         let title: String
+        let displayTitle: String
         let message: String
     }
 

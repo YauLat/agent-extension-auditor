@@ -15,8 +15,8 @@ struct PageHeader: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .tracking(-0.6)
+                        .font(.system(size: 26, weight: .semibold))
+                        .tracking(-0.4)
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -194,35 +194,11 @@ struct PrivacyStrip: View {
     let language: AppLanguage
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "lock.shield.fill")
-                .font(.title3)
-                .foregroundStyle(Color(red: 0.18, green: 0.52, blue: 0.28))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(text(.privacy, language: language))
-                    .font(.subheadline.weight(.semibold))
-                Text(text(.privacyNote, language: language))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack(spacing: 12) {
-                privacyLabel(.noTelemetry)
-                privacyLabel(.noUpload)
-                privacyLabel(.localOnly)
-            }
-        }
-        .padding(14)
-        .auditorGlass(tint: Color(red: 0.18, green: 0.52, blue: 0.28))
-    }
-
-    private func privacyLabel(_ key: TextKey) -> some View {
-        Label(text(key, language: language), systemImage: "checkmark")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .fixedSize()
+        Label(language == .zhHant ? "掃描留在本機 · 不上傳 · 無遙測" : "Scans stay on this Mac · No upload · No telemetry", systemImage: "lock.shield")
+            .font(.caption).foregroundStyle(AuditorTheme.secondary).padding(.vertical, 6)
     }
 }
+
 
 struct LoadingStateView: View {
     let language: AppLanguage
