@@ -20,6 +20,7 @@ struct InventoryView: View {
                         symbol: type.symbol
                     )
 
+                    DashboardSearchField()
                     SeverityFilterBar(type: type)
 
                     if items.isEmpty {
@@ -53,7 +54,6 @@ struct InventoryView: View {
                 .padding(24)
                 .frame(maxWidth: 1440, alignment: .leading)
         }
-        .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
         .onChange(of: store.windowWidth) { _, width in
             guard selectedItem != nil else { return }
             presentDetailAsSheet = width < 1_100

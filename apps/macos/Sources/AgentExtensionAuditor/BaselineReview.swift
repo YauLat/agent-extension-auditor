@@ -78,9 +78,16 @@ struct BaselineReviewView: View {
     private func copy(_ zh: String, _ en: String) -> String { store.language == .zhHant ? zh : en }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(copy("人工檢視基準", "Manual review baseline")).font(.headline)
-            Text(copy("比較新增、修改和移除的擴充。接受只記錄本次檢視；不會啟用擴充或認證安全。", "Compare added, changed and removed extensions. Acceptance records review; it does not enable or certify extensions."))
-                .font(.caption).foregroundStyle(.secondary)
+            Label(copy("變更比較", "Change comparison"), systemImage: "clock").font(.system(size: 16, weight: .semibold))
+            if store.baselineReview == nil {
+                Text(copy("比較目前內容，檢視新增、修改及移除的資產。", "Compare current contents to review added, changed and removed assets."))
+                    .font(.system(size: 13)).foregroundStyle(AuditorTheme.secondary)
+            }
+            Text(copy("基準記錄人工檢視；不會啟用擴充或認證安全。", "A baseline records manual review; it does not enable or certify extensions."))
+                .font(.system(size: 12)).foregroundStyle(AuditorTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(AuditorTheme.inset, in: RoundedRectangle(cornerRadius: 10))
             ViewThatFits(in: .horizontal) {
                 HStack { actionButtons }.fixedSize(horizontal: true, vertical: false)
                 VStack(alignment: .leading, spacing: 8) { actionButtons }
@@ -114,16 +121,17 @@ struct BaselineReviewView: View {
                 }
             }
             if !store.baselineMessage.isEmpty { Text(store.baselineMessage).font(.caption) }
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).auditorGlass()
+        }.padding(20).frame(maxWidth: .infinity, alignment: .leading).auditorGlass()
     }
     @ViewBuilder
     private var actionButtons: some View {
         Button(copy("比較目前內容", "Compare current contents")) { Task { await store.reviewBaseline() } }
+            .buttonStyle(AuditorQuietButtonStyle())
             .disabled(store.baselineBusy || store.isScanning)
         if let review = store.baselineReview {
             Button(review.exists ? copy("接受已檢視變更", "Accept reviewed changes") : copy("建立已檢視基準", "Create reviewed baseline")) {
                 Task { await store.acceptBaseline() }
-            }.disabled(!store.canAcceptBaseline)
+            }.buttonStyle(AuditorQuietButtonStyle()).disabled(!store.canAcceptBaseline)
         }
         if store.baselineBusy {
             ProgressView().controlSize(.small)

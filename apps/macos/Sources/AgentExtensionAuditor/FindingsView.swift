@@ -31,6 +31,7 @@ struct FindingsView: View {
                         .padding(.horizontal, 24)
                 }
 
+                DashboardSearchField().padding(.horizontal, 24)
                 filterBar
                     .padding(.horizontal, 24)
 
@@ -56,7 +57,6 @@ struct FindingsView: View {
                     .scrollContentBackground(.hidden)
                 }
         }
-        .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
         .onAppear { presentDetailAsSheet = store.selectedFindingID != nil && store.windowWidth < 1_100 }
         .onChange(of: store.selectedFindingID) { _, newValue in
             if newValue != nil {

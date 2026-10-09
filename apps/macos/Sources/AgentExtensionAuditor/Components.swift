@@ -6,24 +6,51 @@ struct PageHeader: View {
     let symbol: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AuditorTheme.accent)
-                .frame(width: 42, height: 42)
-                .auditorGlass(tint: AuditorTheme.accent)
-
+        HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                        .font(.system(size: 26, weight: .semibold))
-                        .tracking(-0.4)
+                        .font(.system(size: 27, weight: .semibold))
+                        .tracking(-0.7)
                 Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(AuditorTheme.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
         }
+    }
+}
+
+private struct DashboardSearchFocusKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var dashboardSearchFocus: Binding<Bool>? {
+        get { self[DashboardSearchFocusKey.self] }
+        set { self[DashboardSearchFocusKey.self] = newValue }
+    }
+}
+
+struct DashboardSearchField: View {
+    @EnvironmentObject private var store: AuditStore
+    @FocusState private var searchFocused: Bool
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(AuditorTheme.secondary)
+            TextField(text(.searchPlaceholder, language: store.language), text: $store.searchText)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .accessibilityLabel(text(.searchPlaceholder, language: store.language))
+            if !store.searchText.isEmpty {
+                Button { store.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(store.language == .zhHant ? "清除搜尋" : "Clear search")
+            }
+        }.font(.system(size: 14)).padding(.horizontal, 12).frame(minHeight: 42)
+            .background(AuditorTheme.surface, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(AuditorTheme.secondary.opacity(0.75), lineWidth: 1))
+            .focusedSceneValue(\.dashboardSearchFocus, Binding(get: { searchFocused }, set: { searchFocused = $0 }))
     }
 }
 

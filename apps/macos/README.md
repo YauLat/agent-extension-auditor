@@ -10,7 +10,7 @@ The repository never stores a signing identity, certificate, private key, Apple 
 
 ## Requirements
 
-- macOS 14 or newer. Data cards use opaque, adaptive light/dark surfaces; window chrome and controls follow macOS.
+- macOS 14 or newer. The dashboard defaults to the reviewed warm light appearance; the header's display button switches this App window between light and dark without changing macOS settings or saving a preference. Data cards remain opaque; window controls remain native.
 - Xcode 26 to build the current source.
 - Node.js 20 or newer to run the bundled `agent-audit` scanner.
 
@@ -61,6 +61,6 @@ AGENT_AUDIT_BACKUP_DIR=/path/to/private/backup-directory
 
 Scan reports are decoded in memory. A temporary JSON report is removed as soon as decoding finishes.
 
-The native dashboard shows assets, full findings and pending reviews together, with priority review before baseline administration. Narrow windows stack the action rail and present finding details in a native sheet. Known-rule Chinese titles are searchable; English scanner text remains available in details, and custom rules preserve their original text. A retained report explicitly identifies its inspected scope when the next selected scan scope changes.
+The native dashboard follows the original visual specimen's green sidebar, text-only summary strip, outlined priority findings and compact coverage line. At wide widths it uses a 224-point sidebar, 67-point workspace header and 286-point action rail; narrow windows use a 196-point sidebar, stack the rail and present finding details in a native sheet. All asset categories remain available in the sidebar disclosure. Findings and inventory have an inline search field with Command-F focus. Known-rule Chinese titles are searchable; English scanner text remains available in details, and custom rules preserve their original text. A retained report explicitly identifies its inspected scope when the next selected scan scope changes.
 
 The app can guide one explicit repair: add a user-supplied HTTPS source URL to `SKILL.md` for an `UNKNOWN_SOURCE` finding. It previews the change, asks for confirmation, verifies the preview hash, creates a private local backup, applies atomically, rescans, and offers guarded rollback. All shell, hook, credential, network, package-script, and write/delete findings remain manual-review only. The app never installs, deletes, enables, disables, or quarantines extensions.
