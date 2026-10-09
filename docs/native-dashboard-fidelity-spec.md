@@ -54,3 +54,15 @@ The final bundle rendered the four-skill/one-Critical report at 1440, 1024 and 9
 Before the final brand-only correction, the candidate also verified App-only dark/light display, stale-scope warning and safe rescan, English narrow layout, and read-only comparison without accepting a baseline. Dated evidence, exact bundle identities and source hashes are recorded in the private ui-fidelity-20261008 report and verification receipt. Scanner dist, schemas, parser runtime, licenses and privacy notice match source; deep/strict ad-hoc verification passed.
 
 The reference's composition is reproduced, not a claim of pixel identity: native window chrome, real controls, timestamps, OS scrollbars and actual evidence remain. No fresh 30,000-finding GUI performance run, full VoiceOver/preference matrix, actual Intel/clean Mac runtime or human usability study was performed for this correction.
+
+## Post-push CI correction — 2026-10-09
+
+- Goal: restore the existing single-line severity-count contract without changing the accepted dashboard composition.
+- Non-goals: no scanner, model, ruleset, workflow, permission, dependency or release change; no relaxation of the existing release-hardening assertion.
+- Current behavior: CI and a local targeted reproduction fail because the old static guard searches for `Text(count.formatted())`, whereas the new severity row renders the count directly from the report and omitted the prior single-line/scaling/fixed-size modifiers.
+- Proposed behavior: restore those modifiers on the actual severity-count text; point the existing static check at that expression and make a missing expression fail explicitly.
+- Files/modules affected: OverviewView.swift, test/release-hardening.test.ts and this specification only.
+- Verification plan: retain the failing reproduction, confirm the existing check also rejects the updated expression before the modifiers are restored, then run Node lint/all tests/rule evaluation and the native suite. Commit/push the bounded correction under the existing UI repair and branch-push authorization, and verify all remote CI jobs for the exact new SHA.
+- Risks / rollback notes: source inspection alone does not prove rendered large-count layout. Native compilation/tests and both CI architectures remain required; the preceding accepted App and screenshot retain their dated artifact identity. Revert only this bounded correction if required; no migration or user-data change.
+
+Local verification: the original check failed on the pushed source; the updated check also failed before the count modifiers were restored. After the fix, lint, all 173 Node tests across 15 files, the 60-case frozen synthetic rule evaluation and all 43 native tests passed. The original CI run passed both macOS jobs and failed this one Node assertion; the correction still requires an exact-SHA remote CI result after push. These checks do not claim new native screenshot or user-device Intel evidence.

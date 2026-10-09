@@ -129,6 +129,9 @@ struct OverviewView: View {
                         }
                         Spacer()
                         Text(report.summary.findings.count(for: severity).formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .fixedSize(horizontal: true, vertical: false)
                     }.frame(minHeight: 42)
                     if severity != Severity.allCases.last { Rectangle().fill(AuditorTheme.border).frame(height: 1) }
                 }

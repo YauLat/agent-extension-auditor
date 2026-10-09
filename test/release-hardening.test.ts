@@ -67,8 +67,9 @@ describe("macOS release hardening", () => {
       "apps/macos/Sources/AgentExtensionAuditor/OverviewView.swift",
       "utf8"
     );
-    const countBlock = overview.match(/Text\(count\.formatted\(\)\)[\s\S]{0,300}\.fixedSize\(horizontal: true, vertical: false\)/);
+    const countBlock = overview.match(/Text\(report\.summary\.findings\.count\(for: severity\)\.formatted\(\)\)[\s\S]{0,300}\.fixedSize\(horizontal: true, vertical: false\)/);
 
+    expect(countBlock, "severity count must retain its single-line layout modifiers").not.toBeNull();
     expect(countBlock?.[0]).toContain(".lineLimit(1)");
     expect(countBlock?.[0]).toContain(".minimumScaleFactor(0.75)");
   });
