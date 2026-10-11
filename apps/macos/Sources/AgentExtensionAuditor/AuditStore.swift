@@ -5,13 +5,15 @@ import Foundation
 @MainActor
 final class AuditStore: ObservableObject {
     @Published var findingReviewPreview: FindingDispositionPreview?
-    @Published var findingReviewMessage = ""
+    @Published var findingReviewStatus: AuditStatusMessage?
+    var findingReviewMessage: String { findingReviewStatus?.text(language: language) ?? "" }
     @Published var findingReviewBusy = false
     private var findingReviewRequest: ScanRequest?
     private var findingReviewFinding: Finding?
     private(set) var dispositionCounts = (needsReview: 0, reviewed: 0)
     @Published var baselineReview: BaselineReview?
-    @Published var baselineMessage = ""
+    @Published var baselineStatus: AuditStatusMessage?
+    var baselineMessage: String { baselineStatus?.text(language: language) ?? "" }
     @Published var baselineBusy = false
     private var baselineRequest: ScanRequest?
     private var baselineCancellation: ScanCancellation?
@@ -51,7 +53,8 @@ final class AuditStore: ObservableObject {
     @Published var language: AppLanguage
     @Published var isScanning = false
     @Published var scanStartedAt: Date?
-    @Published var scanMessage = ""
+    @Published var scanStatus: AuditStatusMessage?
+    var scanMessage: String { scanStatus?.text(language: language) ?? "" }
     private var scanCancellation: ScanCancellation?
     @Published var lastError: AuditRunnerError?
     @Published private(set) var runtimeStatus: RuntimeStatus
@@ -93,7 +96,7 @@ final class AuditStore: ObservableObject {
         guard !isScanning && !baselineBusy && !findingReviewBusy else { return }
         isScanning = true
         lastError = nil
-        scanMessage = ""
+        scanStatus = nil
         scanStartedAt = Date()
         let cancellation = ScanCancellation()
         scanCancellation = cancellation
@@ -108,7 +111,7 @@ final class AuditStore: ObservableObject {
             applyReport(result, index: index, request: request)
             runtimeStatus = runner.runtimeStatus()
         } catch is CancellationError {
-            scanMessage = language == .zhHant ? "掃描已取消；保留上一份報告。" : "Scan cancelled; the previous report is unchanged."
+            scanStatus = .scanCancelled
         } catch let error as AuditRunnerError {
             lastError = error
             runtimeStatus = runner.runtimeStatus()
@@ -238,10 +241,10 @@ final class AuditStore: ObservableObject {
         findingReviewPreview = nil
         findingReviewRequest = nil
         findingReviewFinding = nil
-        findingReviewMessage = ""
+        findingReviewStatus = nil
         baselineReview = nil
         baselineRequest = nil
-        baselineMessage = ""
+        baselineStatus = nil
     }
 
     var canAcceptBaseline: Bool {
@@ -252,7 +255,7 @@ final class AuditStore: ObservableObject {
     func reviewBaseline() async {
         guard !baselineBusy && !isScanning && !findingReviewBusy else { return }
         baselineBusy = true
-        baselineMessage = ""
+        baselineStatus = nil
         let cancellation = ScanCancellation()
         baselineCancellation = cancellation
         let generation = baselineGeneration
@@ -275,10 +278,10 @@ final class AuditStore: ObservableObject {
             assetChanges = changes
             applyIndex(prioritized)
         } catch is CancellationError {
-            baselineMessage = language == .zhHant ? "比較已取消；保留上一份完整結果。" : "Comparison cancelled; the previous complete result is retained."
+            baselineStatus = .comparisonCancelled
         } catch {
             baselineRequest = nil
-            baselineMessage = language == .zhHant ? "無法建立完整比較；請先處理覆蓋率、路徑或基準相容性問題。" : "Cannot prepare a complete review. Check coverage, paths and baseline compatibility."
+            baselineStatus = .comparisonFailed
         }
     }
 
@@ -291,10 +294,10 @@ final class AuditStore: ObservableObject {
         do {
             try await runner.acceptBaseline(request, review: review)
             invalidateBaselineReview()
-            baselineMessage = language == .zhHant ? "已儲存人工檢視基準；這不代表擴充已獲安全認證。" : "Manual review baseline saved. This is not a safety certification."
+            baselineStatus = .baselineSaved
         } catch {
             invalidateBaselineReview()
-            baselineMessage = language == .zhHant ? "未接受變更。檔案、基準或覆蓋率可能已改變；請重新比較。" : "Changes were not accepted. Files, baseline or coverage may have changed; compare again."
+            baselineStatus = .baselineStale
         }
     }
 
@@ -309,12 +312,12 @@ final class AuditStore: ObservableObject {
         guard !findingReviewBusy && !isScanning && !baselineBusy,
               let scannerID = finding.scannerID,
               let contentHash = report?.inventory.first(where: { $0.id == finding.itemId })?.contentHash else {
-            findingReviewMessage = language == .zhHant ? "缺少完整內容證據，請重新掃描。" : "Complete content evidence is missing. Scan again."
+            findingReviewStatus = .findingEvidenceMissing
             return
         }
         findingReviewBusy = true
         findingReviewPreview = nil
-        findingReviewMessage = ""
+        findingReviewStatus = nil
         defer { findingReviewBusy = false }
         let request = ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage)
         do {
@@ -325,7 +328,7 @@ final class AuditStore: ObservableObject {
             findingReviewRequest = request
             findingReviewFinding = finding
         } catch {
-            findingReviewMessage = language == .zhHant ? "無法核對目前內容或私人審閱檔；請重新掃描並檢查覆蓋率。" : "Current content or private review storage could not be checked. Scan again and check coverage."
+            findingReviewStatus = .findingPreviewFailed
         }
     }
 
@@ -339,10 +342,10 @@ final class AuditStore: ObservableObject {
             let index = await indexBuilder(refreshed)
             guard request == ScanRequest(rootURL: workspaceURL, includeHome: includeHome, directPackage: directPackage) else { return }
             applyReport(refreshed, index: index, request: request)
-            findingReviewMessage = language == .zhHant ? "已儲存人工決定；severity、風險閘門及覆蓋率保留。" : "Manual decision saved; severity, risk gates and coverage are preserved."
+            findingReviewStatus = .findingSaved
         } catch {
             findingReviewPreview = nil
-            findingReviewMessage = language == .zhHant ? "未能確認保存結果；內容或審閱檔可能已改變。請重新掃描後核對。" : "Save outcome could not be confirmed. Content or review storage may have changed; scan again to check."
+            findingReviewStatus = .findingSaveFailed
         }
     }
 

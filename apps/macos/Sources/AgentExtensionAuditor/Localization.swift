@@ -14,6 +14,34 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+enum AuditStatusMessage: CaseIterable {
+    case scanCancelled
+    case comparisonCancelled
+    case comparisonFailed
+    case baselineSaved
+    case baselineStale
+    case findingEvidenceMissing
+    case findingPreviewFailed
+    case findingSaved
+    case findingSaveFailed
+
+    func text(language: AppLanguage) -> String {
+        let pair: (zh: String, en: String)
+        switch self {
+        case .scanCancelled: pair = ("掃描已取消；保留上一份報告。", "Scan cancelled; the previous report is unchanged.")
+        case .comparisonCancelled: pair = ("比較已取消；保留上一份完整結果。", "Comparison cancelled; the previous complete result is retained.")
+        case .comparisonFailed: pair = ("無法建立完整比較；請先處理覆蓋率、路徑或基準相容性問題。", "Cannot prepare a complete review. Check coverage, paths and baseline compatibility.")
+        case .baselineSaved: pair = ("已儲存人工檢視基準；這不代表擴充已獲安全認證。", "Manual review baseline saved. This is not a safety certification.")
+        case .baselineStale: pair = ("未接受變更。檔案、基準或覆蓋率可能已改變；請重新比較。", "Changes were not accepted. Files, baseline or coverage may have changed; compare again.")
+        case .findingEvidenceMissing: pair = ("缺少完整內容證據，請重新掃描。", "Complete content evidence is missing. Scan again.")
+        case .findingPreviewFailed: pair = ("無法核對目前內容或私人審閱檔；請重新掃描並檢查覆蓋率。", "Current content or private review storage could not be checked. Scan again and check coverage.")
+        case .findingSaved: pair = ("已儲存人工決定；嚴重程度、風險閘門及覆蓋率保留。", "Manual decision saved; severity, risk gates and coverage are preserved.")
+        case .findingSaveFailed: pair = ("未能確認保存結果；內容或審閱檔可能已改變。請重新掃描後核對。", "Save outcome could not be confirmed. Content or review storage may have changed; scan again to check.")
+        }
+        return language == .zhHant ? pair.zh : pair.en
+    }
+}
+
 enum TextKey {
     case configurationState
     case configuredEnabled

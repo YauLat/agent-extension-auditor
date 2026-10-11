@@ -66,3 +66,29 @@ The reference's composition is reproduced, not a claim of pixel identity: native
 - Risks / rollback notes: source inspection alone does not prove rendered large-count layout. Native compilation/tests and both CI architectures remain required; the preceding accepted App and screenshot retain their dated artifact identity. Revert only this bounded correction if required; no migration or user-data change.
 
 Local verification: the original check failed on the pushed source; the updated check also failed before the count modifiers were restored. After the fix, lint, all 173 Node tests across 15 files, the 60-case frozen synthetic rule evaluation and all 43 native tests passed. The original CI run passed both macOS jobs and failed this one Node assertion; the correction still requires an exact-SHA remote CI result after push. These checks do not claim new native screenshot or user-device Intel evidence.
+
+## Local customer-test correction — 2026-10-11
+
+- Goal: keep retained operation messages in the currently selected interface language.
+- Non-goals: no persistent model, scanner, severity, risk gate, scope, review guard or visual composition changes.
+- Current behavior: accepting a synthetic baseline in Chinese and switching to English leaves the saved-status message in Chinese. Missing-evidence warnings have the same defect.
+- Proposed behavior: retain a typed, in-memory operation status and translate it when displayed. Preserve existing clearing and invalidation behavior for scan cancellation, baseline outcomes and finding-review outcomes. Use 「嚴重程度」 in the Chinese saved-decision message.
+- Files/modules affected: AuditStore.swift, Localization.swift and directly affected native tests.
+- Verification plan: reproduce through the packaged native App and two failing operation-based regressions, then run the native suite, source guards and final universal packaging. Re-exercise language changes without repeating writes, plus the existing customer workflows on synthetic fixtures.
+- Risks / rollback notes: changing language must neither repeat operations nor weaken write eligibility. Revert only this bounded status change; the initial main bundle is archived by the packager and the previously accepted bundle is preserved. No migration is needed.
+
+The local request authorizes this repair. Before production edits, both operation-based language regressions failed. After the correction, all 46 native tests passed, including retained-status clearing/guard checks, unchanged baseline bytes across language changes, scan cancellation and the existing synthetic model regression. Final packaged GUI results are recorded in the dated private customer-test report; this does not claim remote CI or public release of the correction.
+
+## Selected finding readability correction — 2026-10-11
+
+- Goal: keep selected finding titles, status and paths readable in the accepted native dashboard.
+- Non-goals: no new selection model, navigation, inspector behavior, scanner, persistence or permission change.
+- Current behavior: actual focused native List selection places blue behind explicitly gray metadata and paths, leaving poor contrast. Clicking and keyboard navigation already select the correct finding.
+- Proposed behavior: retain native List selection and tags; use the existing opaque green brand surface and dark brand text for selected row content, with a separate opaque surface beneath the severity badge. Unselected rows retain their original colors.
+- Files/modules affected: FindingsView.swift only, plus this specification.
+- Verification plan: reproduce before editing, then inspect focused and unfocused rows, Down/Up selection, App-only light/dark display, and wide-to-narrow detail continuity in the final universal bundle. Run the existing native suite and source guards.
+- Risks / rollback notes: native focus decoration may remain around the custom surface. Do not remove native focus or replace keyboard selection. Revert only the row presentation change if required; previous bundles remain recoverably archived.
+
+Local final verification: all 46 Swift tests, 173 Node tests across 15 files, lint and the 60-case frozen synthetic evaluation passed. The universal ad-hoc bundle passed deep/strict signature verification and exact resource parity. Its actual native UI verified readable focused/unfocused selected rows in both App display modes, correct Down/Up evidence locations, the same selected finding in a narrow native sheet, and usable 1440-, 1024- and 940-point layouts. The source-color contrast of #183516 on #83D46D is 7.44:1; this is a calculation for that pair, not a full accessibility certification.
+
+The final bundle also exercised both scan modes with Home excluded, all six populated asset categories, clean/no-match states, English/Chinese search, actual scan cancellation, baseline comparison/save and manual decision save. Retained cancellation, baseline and decision messages follow live language changes without additional baseline/review writes. A reviewed Critical finding still triggers the bundled CLI risk gate even when findings are filtered. No new remote CI, actual Intel/clean Mac runtime, full VoiceOver matrix, human study or public release is claimed.

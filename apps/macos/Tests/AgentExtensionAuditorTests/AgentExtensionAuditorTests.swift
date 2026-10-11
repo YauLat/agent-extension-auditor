@@ -36,7 +36,7 @@ final class AgentExtensionAuditorTests: XCTestCase {
         store.applyReport(report)
         XCTAssertEqual(store.dispositionCounts.needsReview, 3)
         XCTAssertEqual(store.dispositionCounts.reviewed, 0)
-        store.findingReviewMessage = "old decision"
+        store.findingReviewStatus = .findingSaved
         store.directPackage.toggle()
         XCTAssertTrue(store.findingReviewMessage.isEmpty)
         XCTAssertFalse(store.canSaveFindingReview)

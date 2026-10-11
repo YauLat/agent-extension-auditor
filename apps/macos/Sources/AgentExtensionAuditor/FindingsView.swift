@@ -49,7 +49,8 @@ struct FindingsView: View {
                 } else {
                     List(selection: $store.selectedFindingID) {
                         ForEach(findings) { finding in
-                            FindingListRow(finding: finding, language: store.language, changeState: store.comparisonGeneratedAt != nil ? store.changeState(for: finding) : nil)
+                            FindingListRow(finding: finding, language: store.language, changeState: store.comparisonGeneratedAt != nil ? store.changeState(for: finding) : nil,
+                                           isSelected: store.selectedFindingID == finding.id)
                                 .tag(finding.id)
                         }
                     }
@@ -148,22 +149,32 @@ private struct FindingListRow: View {
     let finding: Finding
     let language: AppLanguage
     let changeState: AssetChangeState?
+    let isSelected: Bool
+
+    private var metadataColor: Color { isSelected ? AuditorTheme.accentText : AuditorTheme.secondary }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 SeverityBadge(severity: finding.severity, language: language)
+                    .background(isSelected ? AuditorTheme.surface : Color.clear, in: Capsule())
                 Text(finding.displayTitle(language: language)).font(.callout.weight(.semibold)).lineLimit(2)
                 Spacer(minLength: 0)
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { metadata }
                 VStack(alignment: .leading, spacing: 4) { metadata }
-            }.font(.caption).foregroundStyle(AuditorTheme.secondary)
+            }.font(.caption).foregroundStyle(metadataColor)
             Text(locationText(finding.location)).font(.caption.monospaced())
-                .foregroundStyle(AuditorTheme.secondary).lineLimit(1).truncationMode(.middle)
+                .foregroundStyle(metadataColor).lineLimit(1).truncationMode(.middle)
                 .help(finding.location.path)
-        }.padding(.vertical, 10).help(finding.title)
+        }
+        .foregroundStyle(isSelected ? AuditorTheme.accentText : AuditorTheme.primary)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? AuditorTheme.accentFill : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .help(finding.title)
     }
 
     @ViewBuilder private var metadata: some View {

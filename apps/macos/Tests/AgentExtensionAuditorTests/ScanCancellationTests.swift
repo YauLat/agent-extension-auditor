@@ -58,13 +58,13 @@ final class ScanCancellationTests: XCTestCase {
     @MainActor
     func testScopeChangeClearsPreviousBaselineStatus() {
         let store = AuditStore()
-        store.baselineMessage = "Saved for previous folder"
+        store.baselineStatus = .baselineSaved
         store.workspaceURL = URL(fileURLWithPath: "/tmp/other-synthetic-folder")
         XCTAssertTrue(store.baselineMessage.isEmpty)
-        store.baselineMessage = "Saved for previous mode"
+        store.baselineStatus = .baselineSaved
         store.directPackage.toggle()
         XCTAssertTrue(store.baselineMessage.isEmpty)
-        store.baselineMessage = "Saved for previous Home scope"
+        store.baselineStatus = .baselineSaved
         store.includeHome.toggle()
         XCTAssertTrue(store.baselineMessage.isEmpty)
     }
