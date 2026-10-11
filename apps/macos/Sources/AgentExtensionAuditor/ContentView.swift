@@ -3,18 +3,38 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: AuditStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var darkDisplay = false
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
-        } detail: {
-            ZStack {
-                AuditorTheme.canvas.ignoresSafeArea()
+                .frame(width: store.windowWidth < 1_150 ? 196 : 224)
+            Rectangle().fill(AuditorTheme.border).frame(width: 1)
+            VStack(spacing: 0) {
+                workspaceHeader
+                if let started = store.scanStartedAt {
+                    TimelineView(.periodic(from: started, by: 1)) { context in
+                        Text(store.language == .zhHant ? "正在讀取及檢查本機檔案 · 已用 \(Int(context.date.timeIntervalSince(started))) 秒" : "Reading and reviewing local files · \(Int(context.date.timeIntervalSince(started))) seconds elapsed")
+                            .font(.caption).padding(8)
+                    }
+                } else if !store.scanMessage.isEmpty {
+                    Text(store.scanMessage).font(.caption).padding(8)
+                }
+                if let report = store.report, store.selectedSection != .overview {
+                    CoverageBanner(report: report, language: store.language, request: store.reportRequest, freshness: store.reportScopeFreshness) {
+                        store.selectedSection = .locations
+                    }
+                }
                 selectedContent
+                    .id(store.selectedSection)
+                    .transition(.opacity)
             }
-            .toolbar { toolbarContent }
+            .background { AuditorCanvas() }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.selectedSection)
         }
+        .preferredColorScheme(darkDisplay ? .dark : .light)
+        .foregroundStyle(AuditorTheme.primary)
         .frame(minWidth: 940, minHeight: 660)
         .background {
             GeometryReader { proxy in
@@ -25,11 +45,10 @@ struct ContentView: View {
                     }
             }
         }
-        .task { await store.scanIfNeeded() }
-        .onChange(of: store.selectedSection) { _, _ in
+        .onChange(of: store.selectedSection) { _, newSection in
             store.clearFilters()
             store.selectedInventoryID = nil
-            store.selectedFindingID = nil
+            if newSection != .findings { store.selectedFindingID = nil }
         }
         .sheet(item: $store.activeRepairFinding) { finding in
             GuidedRepairSheet(finding: finding)
@@ -51,7 +70,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var selectedContent: some View {
-        if store.report == nil && store.isScanning {
+        if store.report == nil && store.isScanning && store.selectedSection != .settings {
             LoadingStateView(language: store.language)
         } else {
             switch store.selectedSection {
@@ -69,25 +88,39 @@ struct ContentView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: chooseWorkspace) {
-                Label(store.workspaceURL.lastPathComponent, systemImage: "folder")
-                    .lineLimit(1)
+    private var workspaceHeader: some View {
+        HStack(spacing: 12) {
+            Button(action: store.chooseWorkspace) {
+                HStack(spacing: 10) {
+                    Image(systemName: "folder").font(.system(size: 19))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(store.workspaceURL.lastPathComponent).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                        Text(store.directPackage
+                             ? (store.language == .zhHant ? "下載的套件／技能庫 · 個人目錄已排除" : "Downloaded package / skill library · Home excluded")
+                             : (store.language == .zhHant ? "已安裝的擴充" : "Installed extensions"))
+                            .font(.system(size: 11)).foregroundStyle(AuditorTheme.secondary).lineLimit(1)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
-            .help(text(.chooseFolder, language: store.language))
+            .buttonStyle(.plain)
+            .help(text(.chooseFolder, language: store.language) + "\n" + store.workspaceURL.path)
+            .disabled(store.isScanning || store.baselineBusy || store.findingReviewBusy)
 
             Toggle(
                 text(.includeHome, language: store.language),
                 isOn: Binding(
-                    get: { store.includeHome },
+                    get: { store.includeHome && !store.directPackage },
                     set: { store.setIncludeHome($0) }
                 )
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .help(text(.includeHome, language: store.language))
+            .disabled(store.directPackage || store.isScanning || store.baselineBusy || store.findingReviewBusy)
+
+            Button(store.language == .zhHant ? (darkDisplay ? "淺色顯示" : "深色顯示") : (darkDisplay ? "Light display" : "Dark display")) {
+                darkDisplay.toggle()
+            }.buttonStyle(AuditorQuietButtonStyle())
 
             Menu {
                 ForEach(AppLanguage.allCases) { language in
@@ -102,7 +135,13 @@ struct ContentView: View {
                     }
                 }
             } label: {
-                Label(store.language.displayName, systemImage: "globe")
+                Image(systemName: "globe").font(.system(size: 17))
+            }.menuStyle(.borderlessButton).fixedSize()
+                .accessibilityLabel(store.language == .zhHant ? "語言" : "Language")
+
+            if store.isScanning {
+                Button(store.language == .zhHant ? "取消掃描" : "Cancel scan", action: store.cancelScan)
+                    .buttonStyle(AuditorQuietButtonStyle())
             }
 
             Button {
@@ -113,25 +152,15 @@ struct ContentView: View {
                         .controlSize(.small)
                         .frame(width: 18, height: 18)
                 } else {
-                    Label(text(.scanNow, language: store.language), systemImage: "arrow.clockwise")
+                    Text(text(.scanNow, language: store.language))
                 }
-            }
-            .disabled(store.isScanning)
+            }.buttonStyle(AuditorQuietButtonStyle())
+            .disabled(store.isScanning || store.baselineBusy || store.findingReviewBusy)
             .keyboardShortcut("r", modifiers: .command)
-        }
+        }.padding(.horizontal, store.windowWidth < 1_150 ? 22 : 28)
+            .frame(height: 67)
+            .background(AuditorTheme.canvas)
+            .overlay(alignment: .bottom) { Rectangle().fill(AuditorTheme.border).frame(height: 1) }
     }
 
-    private func chooseWorkspace() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.directoryURL = store.workspaceURL
-        panel.prompt = text(.chooseFolder, language: store.language)
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        store.workspaceURL = url
-        Task { await store.scan() }
-    }
 }

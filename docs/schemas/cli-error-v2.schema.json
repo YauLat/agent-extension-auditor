@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cli-error-v2",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "const": "agent-audit"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_USAGE",
+            "OPERATION_FAILED"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "INVALID_ARGUMENT",
+            "INPUT_PATH_UNAVAILABLE",
+            "REVIEW_REQUIRED",
+            "REVIEW_STALE",
+            "SCAN_INCOMPLETE",
+            "BASELINE_INVALID",
+            "BASELINE_OPERATION_FAILED",
+            "REVIEW_STATE_INVALID",
+            "REVIEW_STATE_BUSY",
+            "UNKNOWN_FAILURE"
+          ]
+        },
+        "operation": {
+          "enum": [
+            "scan",
+            "ui",
+            "explain",
+            "doctor",
+            "baseline.review",
+            "baseline.create",
+            "baseline.accept",
+            "baseline.diff",
+            "baseline.delete",
+            "repair.plan",
+            "repair.apply",
+            "repair.rollback",
+            "review.list",
+            "review.preview",
+            "review.set",
+            "review.restore",
+            "unknown"
+          ]
+        },
+        "retryable": {
+          "const": false
+        },
+        "nextAction": {
+          "enum": [
+            "READ_HELP",
+            "CHECK_PATH_AND_ACCESS",
+            "CHECK_COVERAGE_AND_SCOPE",
+            "REVIEW_BASELINE",
+            "CHECK_FINDING_REVIEW",
+            "CHECK_INPUT_AND_SCOPE"
+          ]
+        },
+        "message": {
+          "enum": [
+            "Invalid command or option. Run agent-audit --help.",
+            "Operation failed. Check input paths, permissions, and scan scope."
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "reason",
+        "operation",
+        "retryable",
+        "nextAction",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "tool",
+    "schemaVersion",
+    "error"
+  ],
+  "additionalProperties": false
+}

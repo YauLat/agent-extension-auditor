@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private finding review revision v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["tool", "schemaVersion", "parentHash", "decisions"],
+  "properties": {
+    "tool": {"const": "agent-audit-review-state"},
+    "schemaVersion": {"const": 1},
+    "parentHash": {"$ref": "#/$defs/hash"},
+    "decisions": {"type": "array", "maxItems": 100000, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fingerprint", "assetIdentityHash", "assetContentHash", "ruleId", "rulesetVersion", "rulesetHash", "scopeHash", "state", "reviewedAt"],
+      "properties": {
+        "fingerprint": {"$ref": "#/$defs/hash"}, "assetIdentityHash": {"$ref": "#/$defs/hash"},
+        "assetContentHash": {"$ref": "#/$defs/hash"}, "scopeHash": {"$ref": "#/$defs/hash"},
+        "rulesetHash": {"$ref": "#/$defs/hash"},
+        "ruleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"},
+        "rulesetVersion": {"type": "string", "pattern": "^[0-9][0-9.a-z-]{0,63}$"},
+        "state": {"enum": ["needs_review", "accepted_risk", "false_positive"]},
+        "reviewedAt": {"type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$"}
+      }
+    }}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

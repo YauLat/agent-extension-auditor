@@ -1,0 +1,1023 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "baseline-response-v2",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit"
+        },
+        "schemaVersion": {
+          "const": 2
+        },
+        "operation": {
+          "const": "baseline.review"
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "const": "agent-audit"
+            },
+            "schemaVersion": {
+              "const": 2
+            },
+            "operation": {
+              "const": "baseline.review"
+            }
+          },
+          "required": [
+            "tool",
+            "schemaVersion",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "reviewedHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canAccept": {
+          "type": "boolean"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "diff": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/diff"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "report": {
+          "$ref": "scan-report-v2.schema.json"
+        },
+        "changeReview": {
+          "type": "object",
+          "required": [
+            "status",
+            "generatedAt",
+            "items"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "comparable",
+                "partial",
+                "incompatible",
+                "unavailable"
+              ]
+            },
+            "generatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "itemId",
+                  "state"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "state": {
+                    "enum": [
+                      "new",
+                      "changed",
+                      "unchanged",
+                      "unknown"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "operation",
+        "response",
+        "exists",
+        "reviewedHash",
+        "canAccept",
+        "assets",
+        "diff"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "report": [
+          "changeReview"
+        ],
+        "changeReview": [
+          "report"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reviewedHash": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "reviewedHash"
+            ]
+          },
+          "then": {
+            "required": [
+              "report",
+              "changeReview"
+            ],
+            "properties": {
+              "canAccept": {
+                "const": false
+              },
+              "report": {
+                "properties": {
+                  "coverage": {
+                    "properties": {
+                      "status": {
+                        "enum": [
+                          "partial",
+                          "failed"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit"
+        },
+        "schemaVersion": {
+          "const": 2
+        },
+        "operation": {
+          "const": "baseline.create"
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "const": "agent-audit"
+            },
+            "schemaVersion": {
+              "const": 2
+            },
+            "operation": {
+              "const": "baseline.create"
+            }
+          },
+          "required": [
+            "tool",
+            "schemaVersion",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        "saved": {
+          "const": true
+        },
+        "assets": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "operation",
+        "response",
+        "saved",
+        "assets"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit"
+        },
+        "schemaVersion": {
+          "const": 2
+        },
+        "operation": {
+          "const": "baseline.accept"
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "const": "agent-audit"
+            },
+            "schemaVersion": {
+              "const": 2
+            },
+            "operation": {
+              "const": "baseline.accept"
+            }
+          },
+          "required": [
+            "tool",
+            "schemaVersion",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        "saved": {
+          "const": true
+        },
+        "assets": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "operation",
+        "response",
+        "saved",
+        "assets"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit-baseline-diff"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "operation": {
+          "const": "baseline.diff"
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "const": "agent-audit"
+            },
+            "schemaVersion": {
+              "const": 2
+            },
+            "operation": {
+              "const": "baseline.diff"
+            }
+          },
+          "required": [
+            "tool",
+            "schemaVersion",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        "status": {
+          "enum": [
+            "comparable",
+            "partial",
+            "incompatible"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "baselineCreatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "currentGeneratedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "addedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "removedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "changedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "newFindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signature": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "ruleId": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info"
+                ]
+              },
+              "evidenceKind": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "keyPath": {
+                "type": "string"
+              },
+              "assetType": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "assetName": {
+                "type": "string"
+              },
+              "assetIdentityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "signature",
+              "ruleId",
+              "severity",
+              "evidenceKind",
+              "location",
+              "assetType",
+              "assetName",
+              "assetIdentityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "resolvedFindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signature": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "ruleId": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info"
+                ]
+              },
+              "evidenceKind": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "keyPath": {
+                "type": "string"
+              },
+              "assetType": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "assetName": {
+                "type": "string"
+              },
+              "assetIdentityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "signature",
+              "ruleId",
+              "severity",
+              "evidenceKind",
+              "location",
+              "assetType",
+              "assetName",
+              "assetIdentityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "unresolvedBaselineAssets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "addedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "removedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "changedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "newFindings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "resolvedFindings": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "addedAssets",
+            "removedAssets",
+            "changedAssets",
+            "newFindings",
+            "resolvedFindings"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "operation",
+        "response",
+        "status",
+        "reasons",
+        "baselineCreatedAt",
+        "currentGeneratedAt",
+        "addedAssets",
+        "removedAssets",
+        "changedAssets",
+        "newFindings",
+        "resolvedFindings",
+        "unresolvedBaselineAssets",
+        "summary"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit"
+        },
+        "schemaVersion": {
+          "const": 2
+        },
+        "operation": {
+          "const": "baseline.delete"
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "const": "agent-audit"
+            },
+            "schemaVersion": {
+              "const": 2
+            },
+            "operation": {
+              "const": "baseline.delete"
+            }
+          },
+          "required": [
+            "tool",
+            "schemaVersion",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        "deleted": {
+          "const": true
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "operation",
+        "response",
+        "deleted"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "diff": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "const": "agent-audit-baseline-diff"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "comparable",
+            "partial",
+            "incompatible"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "baselineCreatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "currentGeneratedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "addedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "removedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "changedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "identityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "previousReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "currentReviewHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "identityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "newFindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signature": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "ruleId": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info"
+                ]
+              },
+              "evidenceKind": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "keyPath": {
+                "type": "string"
+              },
+              "assetType": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "assetName": {
+                "type": "string"
+              },
+              "assetIdentityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "signature",
+              "ruleId",
+              "severity",
+              "evidenceKind",
+              "location",
+              "assetType",
+              "assetName",
+              "assetIdentityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "resolvedFindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signature": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "ruleId": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info"
+                ]
+              },
+              "evidenceKind": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "keyPath": {
+                "type": "string"
+              },
+              "assetType": {
+                "enum": [
+                  "skill",
+                  "plugin",
+                  "mcpServer",
+                  "hook",
+                  "config",
+                  "package"
+                ]
+              },
+              "assetName": {
+                "type": "string"
+              },
+              "assetIdentityHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "signature",
+              "ruleId",
+              "severity",
+              "evidenceKind",
+              "location",
+              "assetType",
+              "assetName",
+              "assetIdentityHash"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "unresolvedBaselineAssets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "addedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "removedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "changedAssets": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "newFindings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "resolvedFindings": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "addedAssets",
+            "removedAssets",
+            "changedAssets",
+            "newFindings",
+            "resolvedFindings"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "tool",
+        "schemaVersion",
+        "status",
+        "reasons",
+        "baselineCreatedAt",
+        "currentGeneratedAt",
+        "addedAssets",
+        "removedAssets",
+        "changedAssets",
+        "newFindings",
+        "resolvedFindings",
+        "unresolvedBaselineAssets",
+        "summary"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

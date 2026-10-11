@@ -8,6 +8,7 @@ import { renderReport } from "../src/report/index.js";
 import { renderJson } from "../src/report/json.js";
 import { renderMarkdown } from "../src/report/markdown.js";
 import { filterReportByMinSeverity, scanAgentExtensions } from "../src/scanner/index.js";
+import { sanitizePublicSource } from "../src/util/text.js";
 
 const fixtureRoot = path.resolve("test/fixtures");
 const home = path.join(fixtureRoot, "home");
@@ -92,11 +93,92 @@ describe("agent extension scanner", () => {
     expect(json).toContain("SECRET_PATTERN_REFERENCE");
   });
 
+  it("sanitizes source metadata before it enters any report format", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-audit-source-privacy-"));
+    const secret = "PRIVATE_SOURCE_SENTINEL_9384";
+    const at = String.fromCharCode(64);
+    const syntheticHomeUrl = ["file:", "", "", "Users", secret, "private-repository"].join("/");
+    const skillRoot = path.join(root, ".codex", "skills");
+    const safeSkill = path.join(skillRoot, "safe-source", "SKILL.md");
+    const unsafeSkill = path.join(skillRoot, "unsafe-source", "SKILL.md");
+    const packageFile = path.join(root, ".codex", "plugins", "cache", "demo", "package.json");
+
+    try {
+      await fs.mkdir(path.dirname(safeSkill), { recursive: true });
+      await fs.mkdir(path.dirname(unsafeSkill), { recursive: true });
+      await fs.mkdir(path.dirname(packageFile), { recursive: true });
+      await fs.writeFile(
+        safeSkill,
+        [
+          "---",
+          "name: safe-source",
+          `source: "https://report-user:${secret}${at}example.invalid/owner/repository?token=${secret}#${secret}"`,
+          "---",
+          ""
+        ].join("\n")
+      );
+      await fs.writeFile(
+        unsafeSkill,
+        ["---", "name: unsafe-source", `source: ${syntheticHomeUrl}`, "---", ""].join("\n")
+      );
+      await fs.writeFile(
+        packageFile,
+        JSON.stringify(
+          {
+            name: "demo-package",
+            repository: {
+              type: "git",
+              url: `git+https://package-user:${secret}${at}example.invalid/owner/package.git?key=${secret}#${secret}`
+            }
+          },
+          null,
+          2
+        )
+      );
+
+      const report = await scanAgentExtensions({ cwd: root, home: root, generatedAt: new Date(0) });
+      const sources = report.inventory.flatMap((item) => (item.source ? [item.source] : []));
+
+      expect(sources.sort()).toEqual([
+        "git+https://example.invalid/owner/package.git",
+        "git+https://example.invalid/owner/package.git",
+        "https://example.invalid/owner/repository"
+      ].sort());
+      expect(report.inventory.find((item) => item.name === "unsafe-source")?.source).toBeUndefined();
+
+      for (const format of ["terminal", "markdown", "json", "html"] as const) {
+        const output = renderReport(report, format);
+        expect(output).not.toContain(secret);
+        expect(output).not.toContain("report-user");
+        expect(output).not.toContain("package-user");
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts only bounded public source URLs", () => {
+    const at = String.fromCharCode(64);
+    const syntheticHomeUrl = ["file:", "", "", "Users", "private", "repository"].join("/");
+
+    expect(sanitizePublicSource("https://example.invalid/owner/repository")).toBe(
+      "https://example.invalid/owner/repository"
+    );
+    expect(
+      sanitizePublicSource(`'ssh://git:private-value${at}example.invalid/owner/repository?token=private#private'`)
+    ).toBe("ssh://example.invalid/owner/repository");
+    expect(sanitizePublicSource(`git${at}github.com:owner/repository.git`)).toBeUndefined();
+    expect(sanitizePublicSource(syntheticHomeUrl)).toBeUndefined();
+    expect(sanitizePublicSource("javascript:alert(1)")).toBeUndefined();
+    expect(sanitizePublicSource(`https://example.invalid/${"x".repeat(2048)}`)).toBeUndefined();
+    expect(sanitizePublicSource("   ")).toBeUndefined();
+  });
+
   it("can scan only workspace locations without home-directory agent roots", async () => {
     const report = await scanAgentExtensions({ cwd, home, includeHome: false });
     const ruleIds = report.findings.map((finding) => finding.ruleId);
 
-    expect(report.scannedLocations.some((location) => location.displayPath.includes(".claude"))).toBe(false);
+    expect(report.scannedLocations.some((location) => location.path.startsWith(home + path.sep))).toBe(false);
     expect(report.summary.inventory.skills).toBe(0);
     expect(report.summary.inventory.mcpServers).toBe(1);
     expect(ruleIds).not.toContain("DUPLICATE_SKILL_NAME");
@@ -174,8 +256,8 @@ describe("agent extension scanner", () => {
     expect(html).toContain("data-category-section=\"skill\"");
     expect(html).toContain("data-category-filter=\"skill\"");
     expect(html).toContain("Severity groups");
-    expect(html).toContain("data-severity-filter=\"critical\"");
-    expect(html).toContain("severity-group-critical");
+    expect(html).toContain("data-severity-filter=\"info\"");
+    expect(html).toContain("severity-group-info");
     expect(html).toContain("data-advanced-review");
     expect(html).toContain("data-finding-row");
     expect(html).toContain("function applyFilters");
@@ -227,7 +309,7 @@ describe("agent extension scanner", () => {
     const html = renderHtml(emptyReport);
 
     expect(html).toContain("No findings detected");
-    expect(html).toContain("The scan did not find review-worthy extension behavior");
+    expect(html).toContain("Check scan coverage and filters");
   });
 
   it("escapes HTML-sensitive report fields in the HTML renderer", async () => {

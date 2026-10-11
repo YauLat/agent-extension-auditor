@@ -1,7 +1,63 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 — 2026-10-03 (local source; unpublished)
 
+- Add explicit per-finding needs-review, accepted-risk and false-positive decisions in the CLI and Mac app, approved and verified locally on 2026-10-04. Bind decisions to content, permissions, asset identity, scope and rules; preserve severity, gates and coverage.
+- Keep hash-only private revision history with fresh-scan preview protection, exclusive writes and guarded restoration. Reject invalid, ambiguous, incomplete, stale or non-private state; scans load decisions only with `--with-reviews`.
+- Add strict review-state and review-response JSON contracts. Reserve `.agent-audit-reviews` in the scan exclusion policy; existing baselines require manual compatibility review.
+- Add opt-in same-scan baseline reports and conservative asset-change mapping; show current new/changed findings first with an All/New+changed selector, retaining full risk counts and matching previous results on cancellation.
+- Keep the native coverage banner above the Findings header, and update selected finding details between inspector and sheet when the window crosses the existing width threshold.
+
+- Precompute category inventory search text, severity membership and localized ordering per report; retain one normalized-query cache, with the inventory search field/ownership policy unchanged. Verified locally on 2026-10-04.
+
+- Detect bounded Traditional/Simplified Chinese instruction bypass and private-data transmission intent.
+- Detect direct environment references within bounded Python/JavaScript HTTP upload calls; runtime activity remains unknown.
+- Retain each structured credential field once, including flat and snake-case MCP configuration, while removing redundant file-level and config-owned copies.
+- Add sanitized JSON error reason, retryable and nextAction fields for input paths and baseline review failures.
+- Add a compatible baseline response envelope and whitelisted operation labels; incomplete and invalid baselines have actionable reasons.
+- Keep severity intact while prioritizing current code/configuration before explicit examples, disabled configuration and archive paths. Native review queues are cached per report.
+- Explain matched pattern, possible impact and detection limits separately; remove identical remediation text.
+- Add formal scan/error/baseline JSON Schema contracts with offline real-CLI validation; include schemas with npm and bundled scanner artifacts.
+- Avoid repeated category path lookup after item-ID matches; reuse matching review results within native query/rule updates and invalidate on new reports.
+- Add reproducible 30,000-finding native store/filter scale checks.
+- Prepare native review indexes in the background; precompute stable sorting keys and pooled search text. Preserve Unicode path ordering, query semantics and the previous report/selection when preparation is cancelled.
+- Match shared normalized search text once per distinct field group, preserving finding order and rule/severity/category filters; include a unique-message scale control.
+- Avoid rebuilding the outgoing Findings list after navigation resets shared filters; preserve active-view review semantics.
+- Index missing/unknown-owner path fallback and category membership per report, retaining first-input ownership and exact legacy slash/Unicode semantics; add synthetic owner/unique-path scale controls.
+- Resolve severity-filter scope once per native view evaluation and tally its counts in one pass, preserving category/query/rule behavior and filter controls.
+- Ruleset 2026-10-03.2 requires manual baseline review. External release and independent/user validation remain pending.
+
+## 0.3.1 — 2026-10-01 (local source; unpublished)
+
+- Index nearest skill ownership and finding deduplication for large libraries; preserve deterministic findings and asset hashes.
+- Add reproducible scale benchmarks and a frozen synthetic rule evaluation corpus with calibration/evaluation splits.
+- Recognize bounded Chinese documented prohibitions and both orderings of private-data transmission requests; ruleset 2026-10-01.2 requires baseline review.
+- Add native first-use folder/scope controls, elapsed scan status and cancellation that preserves the last report.
+- Add a five-person first-use and seven-day return protocol; human validation remains pending.
+
+## 0.3.0 — 2026-10-01 (local source; unpublished)
+
+- Replace parser source excerpts with fixed diagnostics; mark invalid configuration as incomplete.
+- Add schema version 2, declared scope, bounded-read/skipped counts and explicit partial/failed status across reports and native UI. Legacy reports display unknown coverage.
+- Add shared skills, Claude user/project settings and skills, and Codex TOML configuration.
+- Follow only in-scope symlinks, retain aliases, scan bundled skill text/scripts, and count hook command leaves once.
+- Add stable finding IDs and evidence kind `code`; static evidence does not prove execution.
+- Add scan exit codes 3/4 and `--allow-incomplete` compatibility. Bundle the pinned TOML parser with its license in the Mac app.
+- Add manual local baseline create/diff/accept/delete commands with private hash-only persistence, content/permission-bound review, derived-hash consistency checks, move-aware matching with fail-closed ambiguous identities, self-baseline exclusion, concurrent update guards, and fail-closed schema/rules/scope/coverage gates.
+- Preserve Hermes/SkillClaw discovery and plugin ownership while integrating reliability work.
+- Add explicit `--path`, stable correlation fingerprints, SARIF, structured JSON errors and opt-in `--fail-on` gates.
+- Keep documented prohibitions visible at informational severity, preserve adjacent active instructions, and add bounded prompt-injection/exfiltration detection.
+- Add native baseline preview/create/accept, stale-review protection, top-five next actions, scoped counts, and navigation from assets to findings.
+- Label source metadata as self-declared; distinguish disabled configuration from observed activity.
+- This version has not been published, notarized or deployed.
+
+## 0.2.2 - 2026-07-11
+
+- Added universal `arm64` and `x86_64` macOS packaging with deterministic architecture verification.
+- Added fail-closed Developer ID signing, Hardened Runtime, secure timestamp, notarization, stapling, Gatekeeper assessment, and SHA-256 artifact generation.
+- Added native macOS CI on GitHub-hosted Apple Silicon and Intel macOS 26 runners while preserving the Node 20 gate.
+- Added repository tests for signing, notarization, and dual-architecture CI controls.
+- Kept four-digit severity totals on one line in the Chinese native-app overview at wide desktop sizes.
 - Restored canonical project links after moving the source to a clean public repository with new history.
 
 ## 0.2.1 - 2026-07-11
@@ -44,3 +100,9 @@
 - Added read-only scan, Markdown/JSON/terminal reports, `explain`, and `doctor`.
 - Added deterministic risk rules for MCP, plugins, hooks, secret references, duplicate skills, and oversized skills.
 - Added privacy, security, rule, example, and CI documentation.
+
+### Local unreleased change review
+
+- Add opt-in same-scan baseline review report and conservative current-item change states, including partial reports without acceptance tokens.
+- Mac comparison atomically refreshes report/index/labels; Findings offers All/New and changed and prioritizes current changes while retaining all risks. Cancel preserves the last complete result; rescans, scope changes and baseline acceptance clear labels.
+- Keep Mac scan, manual decision and baseline-file exclusions consistent. Older decisions with a different scope expire without history migration.

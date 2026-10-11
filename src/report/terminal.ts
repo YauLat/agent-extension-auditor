@@ -1,11 +1,14 @@
 import type { ScanReport } from "../types.js";
 import { severityLabels, sortFindings } from "../rules/definitions.js";
+import { coverageLines } from "./coverage.js";
 
 export function renderTerminal(report: ScanReport): string {
   const summary = report.summary;
   const topFindings = sortFindings(report.findings).slice(0, 12);
   const lines = [
     "Agent Extension Audit",
+    "",
+    ...coverageLines(report),
     "",
     "Scanned:",
     `  Skills: ${summary.inventory.skills}`,
@@ -30,7 +33,7 @@ export function renderTerminal(report: ScanReport): string {
       const label = severityLabels[finding.severity].padEnd(5);
       const rule = finding.ruleId.padEnd(28);
       const location = formatLocation(finding);
-      lines.push(`  ${label} ${rule} ${location}`);
+      lines.push(`  ${label} ${rule} ${location} [${finding.evidence?.kind ?? "unknown"}; execution unknown]`);
     }
   }
 

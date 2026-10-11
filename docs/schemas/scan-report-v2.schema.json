@@ -1,0 +1,620 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scan-report-v2",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "const": "agent-audit"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "version": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "privacy": {
+      "type": "object",
+      "properties": {
+        "telemetry": {
+          "const": false
+        },
+        "uploaded": {
+          "const": false
+        }
+      },
+      "required": [
+        "telemetry",
+        "uploaded"
+      ],
+      "additionalProperties": true
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "minSeverity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "hiddenFindings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "hiddenFindings"
+      ],
+      "additionalProperties": true
+    },
+    "scannedLocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "displayPath": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "displayPath",
+          "kind",
+          "exists",
+          "reason"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "inventory": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/inventory"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "type": "object",
+          "properties": {
+            "skills": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "plugins": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mcpServers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hooks": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "configs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "packages": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "skills",
+            "plugins",
+            "mcpServers",
+            "hooks",
+            "configs",
+            "packages"
+          ],
+          "additionalProperties": true
+        },
+        "findings": {
+          "type": "object",
+          "properties": {
+            "critical": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "high": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "low": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "info": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "inventory",
+        "findings"
+      ],
+      "additionalProperties": true
+    },
+    "recommendedActions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "tool",
+    "schemaVersion",
+    "version",
+    "generatedAt",
+    "privacy",
+    "coverage",
+    "scannedLocations",
+    "inventory",
+    "findings",
+    "summary",
+    "recommendedActions"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "inventoryType": {
+      "enum": [
+        "skill",
+        "plugin",
+        "mcpServer",
+        "hook",
+        "config",
+        "package"
+      ]
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^finding:[a-f0-9]{24}$"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "displayPath": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "keyPath": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "displayPath"
+          ],
+          "additionalProperties": true
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "documented",
+                "code",
+                "configured",
+                "metadata"
+              ]
+            },
+            "confidence": {
+              "enum": [
+                "medium",
+                "high"
+              ]
+            },
+            "active": {
+              "const": "unknown"
+            }
+          },
+          "required": [
+            "kind",
+            "confidence",
+            "active"
+          ],
+          "additionalProperties": true
+        },
+        "remediation": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "review",
+                "guided"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "actionId": {
+              "const": "skill.add-source"
+            },
+            "requiresInput": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "const": "source"
+                }
+              ],
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "mode",
+            "title",
+            "summary"
+          ],
+          "additionalProperties": true
+        },
+        "review": {
+          "type": "object",
+          "properties": {
+            "context": {
+              "enum": [
+                "current",
+                "example",
+                "disabled",
+                "archived"
+              ]
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            }
+          },
+          "required": [
+            "context",
+            "priority"
+          ],
+          "additionalProperties": true
+        },
+        "disposition": {
+          "type": "object", "required": ["state", "status"],
+          "properties": {
+            "state": {"enum": ["needs_review", "accepted_risk", "false_positive"]},
+            "status": {"enum": ["unreviewed", "current", "stale", "unavailable"]},
+            "reviewedAt": {"type": "string", "format": "date-time"}
+          },
+          "allOf": [{"if": {"properties": {"status": {"const": "current"}}}, "then": {"required": ["reviewedAt"]}, "else": {"properties": {"state": {"const": "needs_review"}}}}],
+          "additionalProperties": true
+        },
+        "explanation": {
+          "type": "object",
+          "properties": {
+            "detected": {
+              "type": "string"
+            },
+            "impact": {
+              "type": "string"
+            },
+            "limits": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "detected",
+            "impact",
+            "limits"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "fingerprint",
+        "ruleId",
+        "severity",
+        "title",
+        "message",
+        "location",
+        "recommendation",
+        "evidence",
+        "remediation"
+      ],
+      "additionalProperties": true
+    },
+    "inventory": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "skill",
+            "plugin",
+            "mcpServer",
+            "hook",
+            "config",
+            "package"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "displayPath": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "name",
+        "path",
+        "displayPath"
+      ],
+      "additionalProperties": true
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "filesRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filesSkipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "directoriesSkipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "explicitPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "includeHome": {
+              "type": "boolean"
+            },
+            "includePaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "excludePaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "defaultExcludedDirectories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "maxFileBytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxDepth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "includeHome",
+            "includePaths",
+            "excludePaths",
+            "defaultExcludedDirectories",
+            "maxFileBytes",
+            "maxDepth"
+          ],
+          "additionalProperties": true
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "enum": [
+                  "not_found",
+                  "user_excluded",
+                  "default_excluded",
+                  "size_limit",
+                  "depth_limit",
+                  "access_denied",
+                  "read_failed",
+                  "unsupported_type",
+                  "binary_file",
+                  "parse_failed",
+                  "invalid_config",
+                  "structure_limit",
+                  "symlink_broken",
+                  "symlink_cycle",
+                  "outside_scope"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "displayPath": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "file",
+                  "directory",
+                  "target"
+                ]
+              },
+              "affectsCompleteness": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "path",
+              "displayPath",
+              "kind",
+              "affectsCompleteness",
+              "message"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "status",
+        "filesRead",
+        "filesSkipped",
+        "directoriesSkipped",
+        "scope",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

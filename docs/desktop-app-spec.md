@@ -63,6 +63,7 @@ Guided repair uses the same bundled CLI with argument arrays. Planning is read-o
 - App source: `apps/macos/Sources/AgentExtensionAuditor`
 - Swift tests: `apps/macos/Tests/AgentExtensionAuditorTests`
 - Packaging: `apps/macos/scripts/package-app.sh`
+- Developer ID notarization: `apps/macos/scripts/notarize-app.sh`
 - Local output: `apps/macos/build/release/Agent Extension Auditor.app`
 
 The app can be built and opened with:
@@ -76,7 +77,7 @@ open "apps/macos/build/release/Agent Extension Auditor.app"
 ## Current Limits
 
 - macOS only.
-- The local MVP uses an ad-hoc signature and is not notarized.
+- Local development and pull-request builds use an ad-hoc signature. Public release artifacts use a universal Developer ID signature, Hardened Runtime, secure timestamp, Apple notarization, and a stapled ticket.
 - Node.js 20+ must already exist on the Mac; the Node runtime is not redistributed in the app bundle.
 - Review state is not persisted.
 - Guided repair is limited to adding user-supplied source metadata; all other findings remain review-only.
@@ -97,6 +98,8 @@ Verification:
 - `npm pack --dry-run`
 - `swift build --package-path apps/macos`
 - `swift test --package-path apps/macos`
+- Universal `arm64 + x86_64` package and `codesign --verify --deep --strict`
+- Developer ID signature, notarization acceptance, staple validation, Gatekeeper assessment, and SHA-256 verification for a public binary
 - Package and launch `Agent Extension Auditor.app` from Finder.
 - Confirm the bundled scanner returns a real local report.
 - Secret sentinel check remains false.

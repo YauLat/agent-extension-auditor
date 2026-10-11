@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "baseline-snapshot-v1",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "const": "agent-audit-baseline"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reportSchemaVersion": {
+      "const": 2
+    },
+    "scannerVersion": {
+      "type": "string"
+    },
+    "rulesetVersion": {
+      "type": "string"
+    },
+    "scopeHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "coverageStatus": {
+      "const": "complete"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "identityHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "reviewHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "type": {
+            "enum": [
+              "skill",
+              "plugin",
+              "mcpServer",
+              "hook",
+              "config",
+              "package"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "signature": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low",
+                    "info"
+                  ]
+                },
+                "evidenceKind": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "keyPath": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "signature",
+                "ruleId",
+                "severity",
+                "evidenceKind",
+                "location"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "identityHash",
+          "contentHash",
+          "reviewHash",
+          "type",
+          "name",
+          "findings"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": [
+    "tool",
+    "schemaVersion",
+    "createdAt",
+    "reportSchemaVersion",
+    "scannerVersion",
+    "rulesetVersion",
+    "scopeHash",
+    "coverageStatus",
+    "assets"
+  ],
+  "additionalProperties": true
+}

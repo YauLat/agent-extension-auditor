@@ -4,16 +4,55 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  node:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - run: node scripts/evaluate-rules.mjs evaluation
       - run: npm run build
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            architecture: arm64
+          - runner: macos-26-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: swift test --package-path apps/macos
+      - name: Package native app
+        env:
+          MACOS_BUILD_ARCHS: ${{ matrix.architecture }}
+        run: apps/macos/scripts/package-app.sh
+      - name: Verify bundle signature and architecture
+        env:
+          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          APP="apps/macos/build/release/Agent Extension Auditor.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          ARCHITECTURES=$(lipo -archs "$APP/Contents/MacOS/AgentExtensionAuditor")
+          case " $ARCHITECTURES " in
+            *" $EXPECTED_ARCHITECTURE "*) ;;
+            *) echo "missing expected architecture: $EXPECTED_ARCHITECTURE" >&2; exit 1 ;;
+          esac

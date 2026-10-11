@@ -6,23 +6,102 @@ struct PageHeader: View {
     let symbol: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AuditorTheme.accent)
-                .frame(width: 42, height: 42)
-                .auditorGlass(tint: AuditorTheme.accent)
-
+        HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 27, weight: .semibold))
+                        .tracking(-0.7)
                 Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(AuditorTheme.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
         }
+    }
+}
+
+private struct DashboardSearchFocusKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var dashboardSearchFocus: Binding<Bool>? {
+        get { self[DashboardSearchFocusKey.self] }
+        set { self[DashboardSearchFocusKey.self] = newValue }
+    }
+}
+
+struct DashboardSearchField: View {
+    @EnvironmentObject private var store: AuditStore
+    @FocusState private var searchFocused: Bool
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(AuditorTheme.secondary)
+            TextField(text(.searchPlaceholder, language: store.language), text: $store.searchText)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .accessibilityLabel(text(.searchPlaceholder, language: store.language))
+            if !store.searchText.isEmpty {
+                Button { store.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(store.language == .zhHant ? "清除搜尋" : "Clear search")
+            }
+        }.font(.system(size: 14)).padding(.horizontal, 12).frame(minHeight: 42)
+            .background(AuditorTheme.surface, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(AuditorTheme.secondary.opacity(0.75), lineWidth: 1))
+            .focusedSceneValue(\.dashboardSearchFocus, Binding(get: { searchFocused }, set: { searchFocused = $0 }))
+    }
+}
+
+struct StatusPill: View {
+    let title: String
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Label(title, systemImage: symbol)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(color.opacity(0.09), in: Capsule())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct ConfigurationPill: View {
+    let enabled: Bool?
+    let language: AppLanguage
+
+    var body: some View {
+        StatusPill(
+            title: text(enabled.map { $0 ? .configuredEnabled : .configuredDisabled } ?? .configurationUnspecified, language: language),
+            symbol: enabled.map { $0 ? "checkmark.circle" : "minus.circle" } ?? "questionmark.circle",
+            color: enabled == true ? AuditorTheme.accent : .secondary
+        )
+    }
+}
+
+struct EvidenceNotice: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.title3).foregroundStyle(Severity.medium.color)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Severity.medium.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Severity.medium.color.opacity(0.25)))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -61,20 +140,22 @@ struct SeverityBadge: View {
 }
 
 struct SeverityFilterBar: View {
+    var type: InventoryType? = nil
     @EnvironmentObject private var store: AuditStore
 
     var body: some View {
+        let counts = store.severityCounts(for: type)
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 filterButton(
                     title: text(.all, language: store.language),
-                    count: store.report?.summary.findings.total ?? 0,
+                    count: counts.total,
                     severity: nil
                 )
                 ForEach(Severity.allCases) { severity in
                     filterButton(
                         title: severity.label(language: store.language),
-                        count: store.report?.summary.findings.count(for: severity) ?? 0,
+                        count: counts.bySeverity[severity, default: 0],
                         severity: severity
                     )
                 }
@@ -140,35 +221,11 @@ struct PrivacyStrip: View {
     let language: AppLanguage
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "lock.shield.fill")
-                .font(.title3)
-                .foregroundStyle(Color(red: 0.18, green: 0.52, blue: 0.28))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(text(.privacy, language: language))
-                    .font(.subheadline.weight(.semibold))
-                Text(text(.privacyNote, language: language))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack(spacing: 12) {
-                privacyLabel(.noTelemetry)
-                privacyLabel(.noUpload)
-                privacyLabel(.localOnly)
-            }
-        }
-        .padding(14)
-        .auditorGlass(tint: Color(red: 0.18, green: 0.52, blue: 0.28))
-    }
-
-    private func privacyLabel(_ key: TextKey) -> some View {
-        Label(text(key, language: language), systemImage: "checkmark")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .fixedSize()
+        Label(language == .zhHant ? "掃描留在本機 · 不上傳 · 無遙測" : "Scans stay on this Mac · No upload · No telemetry", systemImage: "lock.shield")
+            .font(.caption).foregroundStyle(AuditorTheme.secondary).padding(.vertical, 6)
     }
 }
+
 
 struct LoadingStateView: View {
     let language: AppLanguage

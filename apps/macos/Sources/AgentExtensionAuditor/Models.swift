@@ -40,6 +40,7 @@ struct FindingLocation: Codable, Equatable {
 
 enum EvidenceKind: String, Codable, Equatable {
     case documented
+    case code
     case configured
     case metadata
 }
@@ -68,6 +69,17 @@ struct RemediationDescriptor: Codable, Equatable {
     let requiresInput: [String]?
 }
 
+struct FindingReview: Codable, Equatable {
+    let context: String
+    let priority: Int
+}
+
+struct FindingExplanation: Codable, Equatable {
+    let detected: String
+    let impact: String
+    let limits: String
+}
+
 struct Finding: Codable, Identifiable, Equatable {
     let ruleId: String
     let severity: Severity
@@ -78,6 +90,35 @@ struct Finding: Codable, Identifiable, Equatable {
     let recommendation: String
     let evidence: FindingEvidence?
     let remediation: RemediationDescriptor?
+    var review: FindingReview? = nil
+    var explanation: FindingExplanation? = nil
+    var scannerID: String? = nil
+    var fingerprint: String? = nil
+    var disposition: FindingDisposition? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case ruleId, severity, title, message, location, itemId, recommendation, evidence, remediation, review, explanation, fingerprint, disposition
+        case scannerID = "id"
+    }
+
+    var reviewPriority: Int { max(0, min(5, review?.priority ?? 0)) }
+
+    static func reviewPrecedes(_ lhs: Finding, _ rhs: Finding) -> Bool {
+        if lhs.reviewPriority != rhs.reviewPriority { return lhs.reviewPriority < rhs.reviewPriority }
+        if lhs.severity.rank != rhs.severity.rank { return lhs.severity.rank < rhs.severity.rank }
+        let order = lhs.location.displayPath.localizedStandardCompare(rhs.location.displayPath)
+        return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+    }
+
+    func reviewLabel(language: AppLanguage) -> String {
+        let zh = language == .zhHant
+        switch review?.context {
+        case "archived": return zh ? "封存路徑 · 執行未知" : "Archive path · execution unknown"
+        case "disabled": return zh ? "設定已停用 · 執行未知" : "Disabled configuration · execution unknown"
+        case "example": return zh ? "明示教學示例 · 保留風險" : "Explicit teaching example · risk retained"
+        default: return zh ? "目前掃描範圍 · 執行未知" : "Current scope · execution unknown"
+        }
+    }
 
     var id: String {
         [
@@ -113,6 +154,42 @@ struct RollbackRepairResult: Codable, Equatable {
     let restored: Bool
 }
 
+struct InventoryMetadata: Codable, Equatable {
+    let configuredEnabled: Bool?
+    let pluginId: String?
+    let parseError: String?
+    let coverage: String?
+
+    var isIncomplete: Bool { parseError != nil || coverage != nil }
+
+    private enum CodingKeys: String, CodingKey {
+        case configuredEnabled, pluginId, parseError, coverage
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
+            configuredEnabled = nil
+            pluginId = nil
+            parseError = "Unreadable inventory metadata"
+            coverage = nil
+            return
+        }
+        var invalid = false
+        func read<T: Decodable>(_ type: T.Type, _ key: CodingKeys) -> T? {
+            do { return try values.decodeIfPresent(type, forKey: key) }
+            catch { invalid = true; return nil }
+        }
+        configuredEnabled = read(Bool.self, .configuredEnabled)
+        let owner = read(String.self, .pluginId)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        pluginId = owner?.isEmpty == false ? owner : nil
+        let error = read(String.self, .parseError)
+        let scope = read(String.self, .coverage)
+        // Parser messages can contain source excerpts. Keep only the evidence state.
+        parseError = invalid || error != nil ? "Incomplete inventory metadata" : nil
+        coverage = scope != nil ? "Limited static coverage" : nil
+    }
+}
+
 struct InventoryItem: Codable, Identifiable, Equatable {
     let id: String
     let type: InventoryType
@@ -120,6 +197,17 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     let path: String
     let displayPath: String
     let source: String?
+    let metadata: InventoryMetadata?
+
+    var hasIncompleteEvidence: Bool { metadata?.isIncomplete == true }
+
+    func owningPlugin(in inventory: [InventoryItem]) -> InventoryItem? {
+        guard let pluginId = metadata?.pluginId else { return nil }
+        return inventory.first { $0.type == .plugin && $0.id == pluginId }
+    }
+    var contentHash: String? = nil
+    var aliases: [String]? = nil
+    var agents: [String]? = nil
 }
 
 struct ScannedLocation: Codable, Identifiable, Equatable {
@@ -198,6 +286,34 @@ struct ScanReport: Codable, Equatable {
     let findings: [Finding]
     let summary: ScanSummary
     let recommendedActions: [String]
+    var schemaVersion: Int? = nil
+    var coverage: ScanCoverage? = nil
+}
+
+struct ScanDiagnostic: Codable, Equatable, Identifiable {
+    let code: String
+    let displayPath: String
+    let message: String
+    let affectsCompleteness: Bool
+    var id: String { "\(code)\u{1F}\(displayPath)" }
+}
+
+struct ScanScope: Codable, Equatable {
+    let includeHome: Bool
+    let includePaths: [String]
+    let excludePaths: [String]
+    let defaultExcludedDirectories: [String]
+    let maxFileBytes: Int
+    let maxDepth: Int
+}
+
+struct ScanCoverage: Codable, Equatable {
+    let status: String
+    let filesRead: Int
+    let filesSkipped: Int
+    let directoriesSkipped: Int
+    let diagnostics: [ScanDiagnostic]
+    let scope: ScanScope
 }
 
 enum SidebarSection: Hashable, Identifiable {

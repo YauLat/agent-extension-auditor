@@ -20,7 +20,8 @@ struct InventoryView: View {
                         symbol: type.symbol
                     )
 
-                    SeverityFilterBar()
+                    DashboardSearchField()
+                    SeverityFilterBar(type: type)
 
                     if items.isEmpty {
                         EmptyStateView(
@@ -32,8 +33,8 @@ struct InventoryView: View {
                     } else {
                         GlassGroup {
                             LazyVGrid(
-                                columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
-                                spacing: 12
+                                columns: [GridItem(.adaptive(minimum: 280, maximum: 420), spacing: 16)],
+                                spacing: 16
                             ) {
                                 ForEach(items) { item in
                                     InventoryCard(
@@ -50,10 +51,13 @@ struct InventoryView: View {
                         }
                     }
                 }
-                .padding(28)
+                .padding(24)
                 .frame(maxWidth: 1440, alignment: .leading)
         }
-        .searchable(text: $store.searchText, prompt: text(.searchPlaceholder, language: store.language))
+        .onChange(of: store.windowWidth) { _, width in
+            guard selectedItem != nil else { return }
+            presentDetailAsSheet = width < 1_100
+        }
         .inspector(isPresented: inspectorBinding) {
             if let selectedItem {
                 InventoryDetailView(item: selectedItem)
@@ -73,14 +77,14 @@ struct InventoryView: View {
     private var inspectorBinding: Binding<Bool> {
         Binding(
             get: { selectedItem != nil && !presentDetailAsSheet },
-            set: { if !$0 { store.selectedInventoryID = nil } }
+            set: { if !$0 && !presentDetailAsSheet { store.selectedInventoryID = nil } }
         )
     }
 
     private var sheetBinding: Binding<Bool> {
         Binding(
             get: { selectedItem != nil && presentDetailAsSheet },
-            set: { if !$0 { store.selectedInventoryID = nil } }
+            set: { if !$0 && presentDetailAsSheet { store.selectedInventoryID = nil } }
         )
     }
 }
@@ -109,9 +113,10 @@ private struct InventoryCard: View {
                     if let highestSeverity {
                         SeverityBadge(severity: highestSeverity, language: language)
                     } else {
-                        Image(systemName: "checkmark.shield.fill")
-                            .foregroundStyle(Severity.low.color)
-                            .help(text(.clean, language: language))
+                        Image(systemName: item.hasIncompleteEvidence ? "exclamationmark.circle" : "text.magnifyingglass")
+                            .foregroundStyle(item.hasIncompleteEvidence ? Severity.medium.color : .secondary)
+                            .help(text(item.metadata?.parseError != nil ? .parseIncomplete :
+                                (item.hasIncompleteEvidence ? .limitedCoverage : .noReportedFindings), language: language))
                     }
                 }
 
@@ -124,6 +129,21 @@ private struct InventoryCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    if item.type == .mcpServer {
+                        ConfigurationPill(enabled: item.metadata?.configuredEnabled, language: language)
+                    }
+                    if item.hasIncompleteEvidence {
+                        StatusPill(
+                            title: text(item.metadata?.parseError != nil ? .parseIncomplete : .limitedCoverage, language: language),
+                            symbol: "exclamationmark.circle.fill", color: Severity.medium.color
+                        )
+                    }
+                    if item.metadata?.pluginId != nil {
+                        StatusPill(title: text(.bundledSkill, language: language), symbol: "shippingbox", color: AuditorTheme.accent)
                     }
                 }
 
@@ -141,16 +161,16 @@ private struct InventoryCard: View {
                         .fixedSize()
                 }
             }
-            .padding(14)
-            .frame(minHeight: 158, alignment: .topLeading)
+            .padding(18)
+            .frame(minHeight: 198, alignment: .topLeading)
             .contentShape(Rectangle())
             .auditorGlass(tint: highestSeverity?.color ?? AuditorTheme.accent)
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 18)
                     .stroke(selected ? AuditorTheme.accent : Color.clear, lineWidth: 2)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AuditorCardButtonStyle())
     }
 }
 
@@ -182,7 +202,13 @@ private struct InventoryDetailView: View {
                     .textSelection(.enabled)
 
                 if let source = item.source, !source.isEmpty {
-                    DetailField(title: text(.source, language: store.language), value: source)
+                    DetailField(title: store.language == .zhHant ? "來源（自行聲明，未驗證）" : "Source (self-declared, unverified)", value: source)
+                }
+                if let aliases = item.aliases, aliases.count > 1 {
+                    DetailField(title: store.language == .zhHant ? "安裝位置／別名" : "Install locations / aliases", value: aliases.joined(separator: "\n"), monospaced: true)
+                }
+                if let agents = item.agents, !agents.isEmpty {
+                    DetailField(title: "Agents", value: agents.joined(separator: ", "))
                 }
 
                 DetailField(
@@ -197,6 +223,39 @@ private struct InventoryDetailView: View {
                     Label(text(.copyPath, language: store.language), systemImage: "doc.on.doc")
                 }
 
+                Divider()
+                VStack(alignment: .leading, spacing: 12) {
+                    if item.type == .mcpServer {
+                        Text(text(.configurationState, language: store.language))
+                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        ConfigurationPill(enabled: item.metadata?.configuredEnabled, language: store.language)
+                        Text(text(.runtimeUnverified, language: store.language))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if item.metadata?.parseError != nil {
+                        EvidenceNotice(title: text(.parseIncomplete, language: store.language),
+                                       detail: text(.parseIncompleteDetail, language: store.language))
+                    }
+                    if item.metadata?.coverage != nil {
+                        EvidenceNotice(title: text(.limitedCoverage, language: store.language),
+                                       detail: text(.limitedCoverageDetail, language: store.language))
+                    }
+                    if item.metadata?.pluginId != nil {
+                        if let owner = item.owningPlugin(in: store.report?.inventory ?? []) {
+                            DetailField(title: text(.owningPlugin, language: store.language), value: owner.name)
+                            Text(owner.displayPath).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        } else {
+                            DetailField(title: text(.owningPlugin, language: store.language),
+                                        value: text(.ownerUnresolved, language: store.language))
+                        }
+                    }
+                    if item.metadata == nil {
+                        Text(text(.metadataUnavailable, language: store.language))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
                 SectionTitle(
                     title: text(.findingsForItem, language: store.language),
                     detail: findings.count.formatted()
@@ -204,9 +263,9 @@ private struct InventoryDetailView: View {
 
                 if findings.isEmpty {
                     HStack(spacing: 9) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .foregroundStyle(Severity.low.color)
-                        Text(text(.clean, language: store.language))
+                        Image(systemName: "text.magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        Text(text(.noReportedFindings, language: store.language))
                             .font(.subheadline.weight(.medium))
                     }
                 } else {
@@ -226,6 +285,15 @@ private struct InventoryDetailView: View {
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .auditorGlass(tint: finding.severity.color)
+                            .overlay(alignment: .topTrailing) {
+                                Button {
+                                    store.clearFilters()
+                                    store.selectedFindingID = finding.id
+                                    store.selectedSection = .findings
+                                } label: { Image(systemName: "arrow.up.right.square") }
+                                .help(store.language == .zhHant ? "檢視發現與建議" : "Review finding and recommendation")
+                                .padding(10)
+                            }
                         }
                     }
                 }

@@ -15,6 +15,22 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum TextKey {
+    case configurationState
+    case configuredEnabled
+    case configuredDisabled
+    case configurationUnspecified
+    case runtimeUnverified
+    case parseIncomplete
+    case parseIncompleteDetail
+    case limitedCoverage
+    case limitedCoverageDetail
+    case coverageNotice
+    case coverageNoticeDetail
+    case owningPlugin
+    case bundledSkill
+    case ownerUnresolved
+    case metadataUnavailable
+    case noReportedFindings
     case appName
     case overview
     case findings
@@ -112,6 +128,22 @@ func text(_ key: TextKey, language: AppLanguage) -> String {
     let pair: (zh: String, en: String)
 
     switch key {
+    case .configurationState: pair = ("設定狀態", "Configuration state")
+    case .configuredEnabled: pair = ("設定為啟用", "Enabled in configuration")
+    case .configuredDisabled: pair = ("設定為停用", "Disabled in configuration")
+    case .configurationUnspecified: pair = ("未明確設定", "Not explicitly set")
+    case .runtimeUnverified: pair = ("僅根據檔案設定；未確認是否正在運行。", "Based on configuration files; runtime activity is unverified.")
+    case .parseIncomplete: pair = ("解析不完整", "Incomplete parsing")
+    case .parseIncompleteDetail: pair = ("部分資料無法解讀。結果可能遺漏項目，請檢查原始設定檔。", "Some data could not be read. Results may omit items; review the original configuration.")
+    case .limitedCoverage: pair = ("有限掃描範圍", "Limited coverage")
+    case .limitedCoverageDetail: pair = ("只檢查部分靜態設定，未完整驗證整份設定檔。", "Only a subset of static configuration was checked; the entire file has not been validated.")
+    case .coverageNotice: pair = ("資料不完整的項目", "Items with incomplete coverage")
+    case .coverageNoticeDetail: pair = ("包括解析失敗或僅支援部分設定的項目。沒有風險發現，不等於已完整檢查。", "Includes unreadable data and partially supported configuration. No findings does not mean a complete check.")
+    case .owningPlugin: pair = ("所屬插件", "Owning plugin")
+    case .bundledSkill: pair = ("插件內附", "Plugin bundled")
+    case .ownerUnresolved: pair = ("未能對應報告中的插件", "Plugin could not be resolved in this report")
+    case .metadataUnavailable: pair = ("未提供狀態資料", "Status data not provided")
+    case .noReportedFindings: pair = ("本次沒有回報風險", "No findings reported")
     case .appName: pair = ("Agent Extension Auditor", "Agent Extension Auditor")
     case .overview: pair = ("總覽", "Overview")
     case .findings: pair = ("風險發現", "Findings")

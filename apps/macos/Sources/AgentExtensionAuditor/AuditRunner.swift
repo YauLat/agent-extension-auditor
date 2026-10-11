@@ -1,18 +1,30 @@
 import Foundation
+import Darwin
 
 struct ScanRequest: Equatable {
     let rootURL: URL
     let includeHome: Bool
+    var directPackage: Bool = false
 
     func arguments(scannerURL: URL, outputURL: URL) -> [String] {
+        // Canonicalize the existing parent before appending a snapshot that may not exist yet.
+        // Otherwise /var versus /private/var changes the scope on the first baseline write.
+        let canonicalRoot: URL
+        if let resolved = realpath(rootURL.path, nil) {
+            canonicalRoot = URL(fileURLWithPath: String(cString: resolved))
+            free(resolved)
+        } else { canonicalRoot = rootURL }
         var values = [
             scannerURL.path,
             "scan",
+            "--with-reviews",
             "--format", "json",
             "--output", outputURL.path,
+            "--exclude", canonicalRoot.appendingPathComponent(".agent-audit-baseline.json").path,
             "--root", rootURL.path
         ]
-        if !includeHome {
+        if directPackage { values += ["--path", rootURL.path] }
+        if !includeHome || directPackage {
             values.append("--no-home")
         }
         return values
@@ -151,6 +163,40 @@ struct RuntimeLocator {
     }
 }
 
+/// One token per scan; never looks up or terminates another process by name.
+final class ScanCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func launch(_ child: Process) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+        try child.run()
+        process = child
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        if let process, process.isRunning { process.terminate() }
+    }
+
+    func checkCancellation() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+    }
+
+    func finish() {
+        lock.lock()
+        defer { lock.unlock() }
+        process = nil
+    }
+}
+
 struct AuditRunner {
     let locator: RuntimeLocator
 
@@ -162,10 +208,14 @@ struct AuditRunner {
         locator.status()
     }
 
-    func scan(_ request: ScanRequest) async throws -> ScanReport {
-        try await Task.detached(priority: .userInitiated) {
-            try scanSynchronously(request)
-        }.value
+    func scan(_ request: ScanRequest, cancellation: ScanCancellation = ScanCancellation()) async throws -> ScanReport {
+        try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                try scanSynchronously(request, cancellation: cancellation)
+            }.value
+        } onCancel: {
+            cancellation.cancel()
+        }
     }
 
     func planSourceRepair(path: String, source: String) async throws -> RepairPlan {
@@ -210,7 +260,71 @@ struct AuditRunner {
         }.value
     }
 
-    private func scanSynchronously(_ request: ScanRequest) throws -> ScanReport {
+    func reviewBaseline(_ request: ScanRequest, cancellation: ScanCancellation = ScanCancellation()) async throws -> BaselineReview {
+        let data = try await baselineCommand(request, operation: "review", extraArguments: ["--include-report"], cancellation: cancellation)
+        try cancellation.checkCancellation()
+        let review = try JSONDecoder().decode(BaselineReview.self, from: data)
+        guard let report = review.report, let changes = review.changeReview,
+              report.schemaVersion == 2, changes.generatedAt == report.generatedAt else { throw AuditRunnerError.invalidReport }
+        return review
+    }
+
+    func acceptBaseline(_ request: ScanRequest, review: BaselineReview) async throws {
+        guard review.canAccept, review.hasValidToken else { throw AuditRunnerError.invalidReport }
+        _ = try await baselineCommand(request, operation: review.exists ? "accept" : "create", expectedHash: review.reviewedHash)
+    }
+
+    func previewFindingDisposition(_ request: ScanRequest, findingID: String, contentHash: String) async throws -> FindingDispositionPreview {
+        let data = try await baselineCommand(request, operation: "preview", command: "review", extraArguments: ["--finding", findingID, "--content-hash", contentHash])
+        let preview = try JSONDecoder().decode(FindingDispositionPreview.self, from: data)
+        guard preview.isValid, preview.findingId == findingID else { throw AuditRunnerError.invalidReport }
+        return preview
+    }
+
+    func saveFindingDisposition(_ request: ScanRequest, preview: FindingDispositionPreview, state: FindingDispositionState) async throws {
+        guard preview.isValid, let findingID = preview.findingId else { throw AuditRunnerError.invalidReport }
+        _ = try await baselineCommand(request, operation: "set", expectedHash: preview.expectedHash, command: "review", extraArguments: ["--finding", findingID, "--state", state.rawValue])
+    }
+
+    private func baselineCommand(_ request: ScanRequest, operation: String, expectedHash: String? = nil, command: String = "baseline", extraArguments: [String] = [], cancellation: ScanCancellation = ScanCancellation()) async throws -> Data {
+        try await Task.detached(priority: .userInitiated) {
+            try cancellation.checkCancellation()
+            defer { cancellation.finish() }
+            let status = locator.status()
+            guard let node = status.nodeURL else { throw AuditRunnerError.nodeMissing }
+            guard let scanner = status.scannerURL else { throw AuditRunnerError.scannerMissing }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agent-audit-baseline-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let outputURL = directory.appendingPathComponent("response.json")
+            FileManager.default.createFile(atPath: outputURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            let output = try FileHandle(forWritingTo: outputURL)
+            defer { try? output.close() }
+            guard let resolved = realpath(request.rootURL.path, nil) else { throw AuditRunnerError.launchFailed }
+            let canonicalRoot = String(cString: resolved)
+            free(resolved)
+            var arguments = [scanner.path, command, operation, "--format", "json", "--root", canonicalRoot] + extraArguments
+            if command == "review" { arguments += ["--exclude", URL(fileURLWithPath: canonicalRoot).appendingPathComponent(".agent-audit-baseline.json").path] }
+            if request.directPackage { arguments += ["--path", canonicalRoot] }
+            if !request.includeHome || request.directPackage { arguments.append("--no-home") }
+            if let expectedHash { arguments += ["--expected-hash", expectedHash, "--yes"] }
+            let process = Process()
+            process.executableURL = node
+            process.arguments = arguments
+            process.currentDirectoryURL = request.rootURL
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            try cancellation.launch(process)
+            process.waitUntilExit()
+            try cancellation.checkCancellation()
+            guard process.terminationStatus == 0 else { throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus) }
+            return try Data(contentsOf: outputURL)
+        }.value
+    }
+
+    private func scanSynchronously(_ request: ScanRequest, cancellation: ScanCancellation) throws -> ScanReport {
+        try cancellation.checkCancellation()
+        defer { cancellation.finish() }
         let status = locator.status()
         guard let nodeURL = status.nodeURL else {
             throw AuditRunnerError.nodeMissing
@@ -231,13 +345,17 @@ struct AuditRunner {
         process.standardError = FileHandle.nullDevice
 
         do {
-            try process.run()
+            try cancellation.launch(process)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw AuditRunnerError.launchFailed
         }
         process.waitUntilExit()
+        try cancellation.checkCancellation()
 
-        guard process.terminationStatus == 0 else {
+        // Incomplete scans still contain useful findings and coverage diagnostics.
+        guard [0, 3, 4].contains(process.terminationStatus) else {
             throw AuditRunnerError.scanFailed(exitCode: process.terminationStatus)
         }
 
